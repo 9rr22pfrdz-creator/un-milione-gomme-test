@@ -23,7 +23,7 @@
     <div id="money" class="money">€ 0,00</div>
     <div class="left"><b id="left">1.000.000</b> GOMME RIMASTE</div>
     <div class="sub">smaltite: <b id="cleared">0</b><span class="lbar"><i id="leftbar"></i></span></div>
-    <div class="van"><span class="vl">FURGONE</span><span class="bar v"><i id="vbar"></i></span><b id="vfill">0/64</b></div>
+    <div class="van"><span class="vl" id="vname">FURGONE</span><span class="bar v"><i id="vbar"></i></span><b id="vfill">0/64</b></div>
   </div>
   <button id="setbtn" class="round" aria-label="Impostazioni"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M19.4 13a7.7 7.7 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.3 7.3 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.7 7.7 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
   <div id="hint" class="hint hidden"></div>
@@ -34,9 +34,21 @@
     <div id="cartchip" class="slot hidden"><span id="cartic"></span><span>Carrello <b id="cartn">0/4</b></span></div>
     <button id="parkbtn" class="slot act hidden"><kbd class="k">Q</kbd><span>Posa carrello</span></button>
     <button id="pickbtn" class="slot act hidden"><kbd class="k">E</kbd><span>Prendi carrello</span></button>
+    <button id="buildbtn" class="slot act build hidden"><kbd class="k">C</kbd><span class="ico">🛠️</span><span>Costruisci</span></button>
     <button id="shopbtn" class="slot shop"><kbd class="k">B</kbd><span class="ico">🏪</span><span>NEGOZIO</span></button>
   </div>
   <button id="throwbtn" class="throwbtn hidden">LANCIA</button>
+  <div id="buildbar" class="buildbar hidden">
+    <div class="btitle"><span class="bp">BLUEPRINT</span> Costruisci · <small>i pezzi smontati ti ridanno tutti i soldi</small></div>
+    <div id="bpieces" class="bpieces"></div>
+    <div class="bctl">
+      <button id="brot" class="bk"><kbd class="k">R</kbd>Ruota</button>
+      <button id="bplace" class="bk tch"><kbd class="k">CLIC</kbd>Piazza</button>
+      <button id="bdel" class="bk"><kbd class="k">X</kbd>Smonta</button>
+      <button id="bexit" class="bk"><kbd class="k">C</kbd>Esci</button>
+    </div>
+    <div id="binfo"></div>
+  </div>
 </div>
 <div id="joy"><div id="knob"></div></div>
 <div id="banner"></div>
@@ -49,13 +61,13 @@
   <div class="help desk">
     <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> cammini · <b>mouse</b> ti guardi intorno</p>
     <p><b>clic</b> su una gomma per prenderla · <b>clic</b> dietro al furgone per lanciarla dentro (tieni premuto per continuare)</p>
-    <p><kbd>B</kbd> negozio · <kbd>Esc</kbd> pausa · <kbd>M</kbd> audio</p>
+    <p><kbd>B</kbd> negozio · <kbd>C</kbd> costruisci (fase 3) · <kbd>Esc</kbd> pausa · <kbd>M</kbd> audio</p>
   </div>
   <div class="help tch">
     <p>👈 Pollice sinistro: cammina · 👉 trascina: guardati intorno</p>
     <p>Tocca una gomma per prenderla · dietro al furgone tocca o premi LANCIA</p>
   </div>
-  <div class="ver">versione di prova 0.5 · prima fetta giocabile</div>
+  <div class="ver">versione di prova 0.6 · fase 3: aiutanti e nastri</div>
 </div>
 
 <div id="pause" class="screen hidden dim">

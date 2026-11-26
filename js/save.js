@@ -5,6 +5,7 @@ import { defaultLevels, UPGRADES, maxLevel, stats } from './config.js';
 export const SAVE_KEY = 'umdg-save';
 export const BACKUP_KEY = 'umdg-save-bak';
 export const SAVE_VERSION = 1;
+export const BELT_TYPES = ['straight', 'curveR', 'curveL', 'intake'];
 
 export function defaultState() {
   return {
@@ -18,8 +19,10 @@ export function defaultState() {
     cartHeld: true,           // trolley in your hands (pushing) or parked somewhere in the yard
     cartPos: null,            // where it is parked: {x, z, rot}
     van: { fill: [], trips: 0 }, // fill: per slot [type] or [3,3] for two scooter tires
+    vehicle: 0,               // tier of the vehicle at the bay (the upgrade lv.vehicle swaps it in on the next trip)
+    belts: [],                // placed conveyor pieces [{type, gx, gz, rot}] (helpers = lv.helper / lv.helperCart)
     player: { x: 3, z: 0.5, yaw: Math.PI / 2, pitch: -0.12 },
-    stats: { cleared: 0, earned: 0, thrown: 0, vans: 0, gold: 0, playTime: 0, bySize: [0, 0, 0, 0, 0] },
+    stats: { cleared: 0, earned: 0, thrown: 0, auto: 0, vans: 0, gold: 0, playTime: 0, bySize: [0, 0, 0, 0, 0] },
     milestones: 0,            // how many MILESTONES already celebrated
     tut: 0,                   // tutorial step
     settings: { volume: 0.8, quality: 'auto', sens: 1, invertY: false },
@@ -53,6 +56,17 @@ export function normalize(raw) {
   if (isObj(raw.van)) {
     if (Array.isArray(raw.van.fill)) s.van.fill = raw.van.fill.filter(f => Array.isArray(f) && f.length >= 1 && f.length <= 2).map(f => tireArr(f, 2)).filter(f => f.length);
     s.van.trips = Math.max(0, num(raw.van.trips, 0) | 0);
+  }
+  // v6: vehicle at the bay (never above the bought tier) + placed belts (valid types, integer cells, one piece per cell)
+  s.vehicle = Number.isInteger(raw.vehicle) ? Math.max(0, Math.min(raw.vehicle, s.lv.vehicle)) : s.lv.vehicle;
+  if (Array.isArray(raw.belts)) {
+    const seen = new Set();
+    for (const b of raw.belts) {
+      if (!isObj(b) || !BELT_TYPES.includes(b.type) || !Number.isInteger(b.gx) || !Number.isInteger(b.gz) || Math.abs(b.gx) > 200 || Math.abs(b.gz) > 200) continue;
+      const k = b.gx + ',' + b.gz; if (seen.has(k)) continue; seen.add(k);
+      s.belts.push({ type: b.type, gx: b.gx, gz: b.gz, rot: Number.isInteger(b.rot) ? ((b.rot % 4) + 4) % 4 : 0 });
+      if (s.belts.length >= 400) break;
+    }
   }
   if (isObj(raw.player)) for (const k of ['x', 'z', 'yaw', 'pitch']) s.player[k] = num(raw.player[k], d.player[k]);
   if (isObj(raw.stats)) {

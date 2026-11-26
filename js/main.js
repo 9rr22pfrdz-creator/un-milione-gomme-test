@@ -1,4 +1,4 @@
-// Un Milione di Gomme: first playable slice (phases 1-2: by hand, then the cart).
+// Un Milione di Gomme: phases 1-3 (by hand, the trolley, the helpers + conveyor belts you build yourself).
 import * as THREE from 'three';
 import * as C from './config.js';
 import { Mountain, N, CELL, ORIGIN, GRAB_LAYERS, SHOW_BURIED, hash2 } from './mountain.js';
@@ -9,6 +9,9 @@ import * as G from './gfx.js';
 import { buildWorker } from './workers.js';
 import { trolleySVG } from './trolley-icon.js';
 import * as YD from './yard.js';
+import { Crew } from './helpers.js';
+import { BeltWorld } from './belts3d.js';
+import * as BL from './beltlogic.js';
 
 const Q = new URLSearchParams(location.search);
 const TEST = Q.has('test');
@@ -26,8 +29,9 @@ let remaining = mountain.total();
 const sfx = new Sfx(); sfx.setVolume(S.settings.volume);
 const T16 = C.TIRES[1];
 let st = C.stats(S.lv);
-const VEH = C.VEHICLES[0]; // the slice uses the van
-const LAYOUT = braidLayout(VEH.cargo);
+const VEH_MAX = 1; // this build: van + furgone grande (camion & bilico come later)
+let VEH = C.VEHICLES[S.vehicle || 0];
+let LAYOUT = braidLayout(VEH.cargo);
 const VAN_X = 11.5, VAN_Z = 0.6, VAN_FAR = 58; // rear of the parked van; where it drives to
 const THROW_ZONE = { near: 0.9, far: 2.1, half: 1.05 }; // metres behind the rear opening, half width
 
@@ -128,8 +132,8 @@ const WORKER_LOOKS = [
 ];
 const workers = [[15.5, -9.4], [17.6, -10.2]].map(([x, z], i) => {
   const w = buildWorker(WORKER_LOOKS[i]); w.position.set(x, 0, z); w.rotation.y = -1.2 - i * 0.4; scene.add(w);
-  colliders.push({ x0: x - 0.35, x1: x + 0.35, z0: z - 0.35, z1: z + 0.35 });
-  return { g: w, shake: 0, next: 8 + i * 9 };
+  const col = { x0: x - 0.35, x1: x + 0.35, z0: z - 0.35, z1: z + 0.35 }; colliders.push(col);
+  return { g: w, shake: 0, next: 8 + i * 9, col, col0: { ...col } };
 });
 
 /* ---------------- the mountain: heightfield bulk + instanced surface tires ---------------- */
@@ -145,7 +149,7 @@ const mGeo = new THREE.BufferGeometry();
   mGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(NV * NV * 3).fill(1), 3));
   mGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); mGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); mGeo.setIndex(new THREE.BufferAttribute(idx, 1));
 }
-const mountainMesh = new THREE.Mesh(mGeo, new THREE.MeshStandardMaterial({ map: pt.map, bumpMap: pt.bump, bumpScale: 3, roughness: 0.85, color: 0x9a9a9a, vertexColors: true }));
+const mountainMesh = new THREE.Mesh(mGeo, new THREE.MeshStandardMaterial({ map: pt.map, bumpMap: pt.bump, bumpScale: 2, roughness: 0.9, color: 0x8a8a8a, vertexColors: true }));
 mountainMesh.castShadow = true; mountainMesh.receiveShadow = true; scene.add(mountainMesh);
 function cellH(i, j) { return (i < 0 || j < 0 || i >= N || j >= N) ? 0 : mountain.count[j * N + i] * mountain.H_UNIT; }
 function updateCorners(cells) {
@@ -156,7 +160,7 @@ function updateCorners(cells) {
     const i = k % NV, j = (k / NV) | 0;
     const a = cellH(i - 1, j - 1), b = cellH(i, j - 1), c = cellH(i - 1, j), d = cellH(i, j);
     const h = (a + b + c + d) === 0 ? -0.35 : (a + b + c + d) / 4;
-    cornerH[k] = h; pos[k * 3 + 1] = h > 0 ? h - 0.14 : h;
+    cornerH[k] = h; pos[k * 3 + 1] = h > 0 ? h - 0.3 : h; // the dark core sits under all 6 visible tire layers
     // the foot of the pile fades into the dusty gravel so the edge doesn't look cut out
     const f = G.clamp((h + 0.1) / 0.9, 0, 1), col = mGeo.attributes.color.array;
     col[k * 3] = G.lerp(2.6, 1, f); col[k * 3 + 1] = G.lerp(2.35, 1, f); col[k * 3 + 2] = G.lerp(2.0, 1, f);
@@ -183,25 +187,27 @@ function inst(geo, mat, max, shadow) {
 }
 const IM = {
   high: inst(geoHigh, tm.rubber, MAXH, true), mid: inst(geoMid, tm.rubber, MAXM, QP.midShadow), far: inst(geoLow, tm.rubberLow, MAXF, false),
-  deep: inst(geoMid, tm.rubber, 900, false), deepL: inst(geoLow, tm.rubber, 1600, false), ghigh: inst(geoHigh, tm.gold, 32, true), gmid: inst(geoMid, tm.gold, 48, true), gfar: inst(geoLow, tm.goldFar, 96, false),
+  deep: inst(geoMid, tm.rubber, 2600, false), deepL: inst(geoLow, tm.rubber, 4200, false), ghigh: inst(geoHigh, tm.gold, 32, true), gmid: inst(geoMid, tm.gold, 48, true), gfar: inst(geoLow, tm.goldFar, 96, false),
 };
 let nearRecs = [], nearCenter = new THREE.Vector2(1e9, 1e9), farCenter = new THREE.Vector2(1e9, 1e9), nearDirty = true, farDirty = true;
 const _m4 = new THREE.Matrix4(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _sc = new THREE.Vector3(), _col = new THREE.Color();
 const UP = new THREE.Vector3(0, 1, 0), AX = new THREE.Vector3(1, 0, 0);
 // world transform of the tire at stack position `index` in cell c, layer L from the top (0 = top)
+const QUAD = [[-1, -1], [1, 1], [1, -1], [-1, 1]];
 function tireXform(c, index, L, type, outPos, outQuat) {
   const h1 = hash2(c, index * 1.7 + 0.3), h2 = hash2(index * 2.3 + 1, c * 0.77), h3 = hash2(c * 1.3 + index, 5.1), h4 = hash2(c + index * 0.31, 9.7);
   const cc = mountain.cellCenter(c), t = C.TIRES[type];
-  const sp = L >= 2 ? 0.95 : 0.72, px = cc.x + (h1 - 0.5) * sp, pz = cc.z + (h2 - 0.5) * sp;
-  const steep = h4 < 0.27 && L < 2, tilt = steep ? 0.85 + h3 * 0.65 : h3 * 0.6;
+  // consecutive tires of a stack fill the four quarters of the cell (+ jitter): every layer covers the gaps of the one above
+  const q = QUAD[(index + c) & 3], px = cc.x + q[0] * 0.25 + (h1 - 0.5) * 0.38, pz = cc.z + q[1] * 0.25 + (h2 - 0.5) * 0.38;
+  const steep = h4 < 0.27 && L < 2, tilt = steep ? 0.85 + h3 * 0.65 : h3 * (L >= 2 ? 0.9 : 0.6);
   meshNormal(px, pz, _v1);
   _q1.setFromUnitVectors(UP, _v1); _q2.setFromAxisAngle(UP, h1 * 6.283); _q3.setFromAxisAngle(AX, tilt);
   outQuat.copy(_q1).multiply(_q2).multiply(_q3);
-  const lift = L === 0 ? t.w * 0.22 + Math.sin(tilt) * t.R * 0.6 : L === 1 ? -0.035 + Math.sin(tilt) * t.R * 0.45 : L === 2 ? -t.R * 0.3 : -t.R * 0.62;
+  const lift = L === 0 ? t.w * 0.22 + Math.sin(tilt) * t.R * 0.6 : L === 1 ? -0.035 + Math.sin(tilt) * t.R * 0.45 : -0.06 - (L - 2) * 0.055 + Math.sin(tilt) * t.R * 0.3;
   outPos.set(px, meshH(px, pz) + lift, pz);
   return t;
 }
-function tint(c, index, L, type) { const k = type === C.GOLD_ID ? 1 : (0.95 + hash2(index * 0.13, c * 0.29) * 0.45) * (L >= 2 ? 0.8 : 1); return _col.setRGB(k, k * 0.985, k * 0.97); }
+function tint(c, index, L, type) { const k = type === C.GOLD_ID ? 1 : (0.95 + hash2(index * 0.13, c * 0.29) * 0.45) * (L >= 2 ? 0.86 - (L - 2) * 0.07 : 1); return _col.setRGB(k, k * 0.985, k * 0.97); }
 function setInst(m, i, pos, quat, t, k = 1) { _sc.set(k * t.R / T16.R, k * t.w / T16.w, k * t.R / T16.R); _m4.compose(pos, quat, _sc); m.setMatrixAt(i, _m4); }
 function rebuildNear() {
   const px = P.x, pz = P.z, R = QP.near, RH = QP.high;
@@ -253,15 +259,26 @@ const keys = {};
 const joy = { x: 0, y: 0, active: false };
 
 /* ---------------- the van ---------------- */
-const van = G.buildVan(VEH, mats, tm.rubber);
-scene.add(van);
-const FL = van.userData.fl;
-const cargoIM = new THREE.InstancedMesh(geoHigh, tm.rubber, LAYOUT.cap * 2); cargoIM.count = 0; cargoIM.castShadow = true; cargoIM.receiveShadow = true; cargoIM.frustumCulled = false;
-const cargoGold = new THREE.InstancedMesh(geoHigh, tm.gold, 8); cargoGold.count = 0; cargoGold.frustumCulled = false; cargoGold.castShadow = true;
-van.add(cargoIM, cargoGold);
-const vanLamp = new THREE.PointLight(0xfff0d6, 3.2, 5.5, 1.6); vanLamp.position.set(VEH.cargo.L * 0.45, FL + VEH.cargo.H - 0.15, 0); van.add(vanLamp);
-const vanFill = new THREE.PointLight(0xdfe8ff, 2.2, 6, 1.6); vanFill.position.set(-1.2, FL + 1.1, 0); van.add(vanFill);
+let van = null, FL = 0.72;
+const CARGO_MAX = Math.max(...C.VEHICLES.slice(0, VEH_MAX + 1).map(v => v.cap));
+const cargoIM = new THREE.InstancedMesh(geoHigh, tm.rubber, CARGO_MAX * 2); cargoIM.count = 0; cargoIM.castShadow = true; cargoIM.receiveShadow = true; cargoIM.frustumCulled = false;
+const cargoGold = new THREE.InstancedMesh(geoHigh, tm.gold, 24); cargoGold.count = 0; cargoGold.frustumCulled = false; cargoGold.castShadow = true;
+const vanLamp = new THREE.PointLight(0xfff0d6, 3.2, 5.5, 1.6);
+const vanFill = new THREE.PointLight(0xdfe8ff, 2.2, 6, 1.6);
 const V = { state: 'loading', t: 0, x: VAN_X, doors: 1, pend: [] }; // pend: placements in flight
+// swap the vehicle at the bay (furgone -> furgone grande): new body, braid layout and capacity
+function setVehicle(tier) {
+  const pos = van ? van.position.clone() : new THREE.Vector3(VAN_X, 0, VAN_Z), vis = van ? van.visible : true;
+  if (van) { van.remove(cargoIM, cargoGold, vanLamp, vanFill); scene.remove(van); van.traverse(o => { if (o.geometry && o.geometry !== geoHigh) o.geometry.dispose(); }); }
+  VEH = C.VEHICLES[tier]; LAYOUT = braidLayout(VEH.cargo); S.vehicle = tier;
+  van = G.buildVan(VEH, mats, tm.rubber); van.position.copy(pos); van.visible = vis; scene.add(van); FL = van.userData.fl;
+  van.add(cargoIM, cargoGold, vanLamp, vanFill);
+  vanLamp.position.set(VEH.cargo.L * 0.45, FL + VEH.cargo.H - 0.15, 0); vanFill.position.set(-1.2, FL + 1.1, 0);
+  if (S.van.fill.length > LAYOUT.cap) S.van.fill.length = LAYOUT.cap;
+  G.poseDoors(van, V.doors); rebuildCargo();
+}
+function targetTier() { return Math.min(S.lv.vehicle, VEH_MAX); }
+setVehicle(Math.min(S.vehicle || 0, VEH_MAX));
 function slotLocal(slotIdx, sub, type, outPos, outQuat) {
   const s = LAYOUT.slots[slotIdx], t = C.TIRES[type];
   const spin = hash2(slotIdx, sub + 3.3) * 6.283;
@@ -350,6 +367,162 @@ function updateFlights(dt) {
   }
 }
 
+/* ---------------- automation: tires taken from the mountain by helpers and intakes ---------------- */
+let autoFlushT = 0, farT = 0, farPending = false;
+function autoTake(x, z, R = 3) {
+  const ci = Math.floor((x - ORIGIN.x) / CELL), cj = Math.floor((z - ORIGIN.z) / CELL), r = Math.ceil(R / CELL);
+  let best = -1, bd = 1e9;
+  for (let j = Math.max(0, cj - r); j <= Math.min(N - 1, cj + r); j++) for (let i = Math.max(0, ci - r); i <= Math.min(N - 1, ci + r); i++) {
+    const c = j * N + i; if (!mountain.count[c]) continue;
+    const cx = ORIGIN.x + (i + 0.5) * CELL, cz = ORIGIN.z + (j + 0.5) * CELL, d = Math.hypot(cx - x, cz - z) - mountain.count[c] * 0.0004; // a bit of preference for the fuller cells
+    if (d <= R && d < bd) { bd = d; best = c; }
+  }
+  if (best < 0) return null;
+  const index = mountain.count[best] - 1, type = mountain.typeAt(best, index), pos = new THREE.Vector3(), quat = new THREE.Quaternion();
+  tireXform(best, index, 0, type, pos, quat);
+  if (mountain.take(best, index) == null) return null;
+  remaining--; return { type, pos, quat };
+}
+// batch the mountain updates from automation: corners every 0.25 s, the far LOD at most every 2 s
+function flushMountain(dt, force = false) {
+  autoFlushT -= dt; farT -= dt;
+  if (mountain.dirty.size && (autoFlushT <= 0 || force)) {
+    let near = false; for (const c of mountain.dirty) { const cc = mountain.cellCenter(c); if (Math.hypot(cc.x - P.x, cc.z - P.z) < QP.near + 2) { near = true; break; } }
+    updateCorners(mountain.dirty); mountain.dirty.clear(); if (near) nearDirty = true; farPending = true; autoFlushT = 0.25;
+  }
+  if (farPending && (farT <= 0 || force)) { rebuildFar(); farPending = false; farT = 2; }
+}
+// where the crew works: F = just off the foot of the mountain, B = beside the van's rear bay, dir = toward the pile
+const MOUNTAIN_C = { x: -42, z: -4 };
+function crewStations() {
+  const B = { x: VAN_X - 1.7, z: VAN_Z - 2.1 };
+  let dx = MOUNTAIN_C.x - B.x, dz = MOUNTAIN_C.z - B.z; const L = Math.hypot(dx, dz); dx /= L; dz /= L;
+  let F = { x: B.x + dx * 8, z: B.z + dz * 8 };
+  for (let d = 2; d < 70; d += 0.25) { const x = B.x + dx * d, z = B.z + dz * d; if (meshH(x, z) > 0.12) { F = { x: x - dx * 0.8, z: z - dz * 0.8 }; break; } }
+  return { F, B, dir: { x: dx, z: dz }, rear: { x: VAN_X - 0.1, z: VAN_Z } };
+}
+function att(x, z) { const d = Math.hypot(x - P.x, z - P.z); return Math.max(0, Math.min(1, 1 / (1 + Math.max(0, d - 2) * 0.2))); }
+const crew = new Crew({
+  scene, buildWorker, TIRES: C.TIRES, sfx, att,
+  tireMesh: (type) => flyMesh(type), freeMesh: (m) => { scene.remove(m); flyPool.push(m); },
+  stations: crewStations, take: (x, z, R) => autoTake(x, z, R),
+  canAccept: (n) => vanCanAccept(n),
+  launch: (type, pos, quat) => launchToVan(type, pos, quat, { auto: true, dur: 0.5, arc: 0.55, spin: 0.4 }),
+  player: () => P,
+  spawn: (i) => i === 0 ? { x: 15.5, z: -9.4 } : i === 1 ? { x: 17.6, z: -10.2 } : { x: 16 + i * 0.7, z: -8.2 - i * 0.6 },
+});
+function syncCrew() {
+  const n = C.UPG.helper.lv[S.lv.helper], spd = C.UPG.helperCart.lv[S.lv.helperCart];
+  if (crew.n !== n || crew.speed !== spd) crew.setCount(n, spd);
+  // the two idle workers by the office ARE Beppino and Ottavio: once hired they leave their spot
+  workers.forEach((w, i) => { const hired = n > i; w.g.visible = !hired; w.col.x0 = hired ? 1e9 : w.col0.x0; w.col.x1 = hired ? 1e9 : w.col0.x1; });
+}
+
+/* ---------------- conveyor belts + build mode ---------------- */
+const belts = new BeltWorld({ scene, tireGeo: geoMid, rubber: tm.rubber, gold: tm.gold, T16, TIRES: C.TIRES, GOLD_ID: C.GOLD_ID });
+belts.load(S.belts);
+const beltRear = { x: VAN_X - 0.2, z: VAN_Z };
+function beltSpeed() { return BL.BASE_SPEED * C.UPG.beltSpeed.lv[S.lv.beltSpeed]; }
+function intakeMax() { return C.UPG.belt.lv[S.lv.belt]; }
+function updateBelts(dt) {
+  if (!belts.pieces.length) return;
+  const sp = beltSpeed(), interval = BL.TIRE_GAP / sp;
+  for (const p of belts.pieces) {
+    if (p.type !== 'intake') continue;
+    p.t = (p.t || 0) - dt; p.feeding = false;
+    if (p.hopper.length && belts.logic.startFree(p)) { p.tires.push({ type: p.hopper.shift(), s: 0, spin: Math.random() * 6.28 }); }
+    if (p.t <= 0 && p.hopper.length + (p.inbound || 0) < 2 && intakeIndex(p) < intakeMax()) {
+      const b = BL.backPoint(p), got = autoTake(b.x, b.z, BL.INTAKE_REACH);
+      p.t = interval;
+      if (got) {
+        p.feeding = true; p.inbound = (p.inbound || 0) + 1; const top = BL.cellCenter(p.gx, p.gz), d = BL.DIRS[p.rot];
+        startFlight({ kind: 'intake', type: got.type, from: got.pos, q0: got.quat, to: new THREE.Vector3(top.x - d[0] * 0.25, 1.55, top.z - d[1] * 0.25), q1: new THREE.Quaternion(), dur: 0.55, arc: 0.9, ease: 'out',
+          done: () => { p.inbound--; if (belts.pieces.includes(p)) p.hopper.push(got.type); else { const v = C.TIRES[got.type].value; S.money += v; S.stats.earned += v; S.stats.cleared++; } } }); // intake dismantled mid-air: sold, never lost
+        if (Math.random() < 0.5) sfx.grab(Math.min(2, got.type), 0, att(b.x, b.z) * 0.6);
+      } else p.empty = true;
+    }
+    if (p.hopper.length || p.inbound) p.feeding = true;
+  }
+  belts.update(dt, sp, beltRear, (tr, p) => {
+    const e = BL.endPoint(p); const from = new THREE.Vector3(e.x, 0.75, e.z);
+    return launchToVan(tr.type, from, new THREE.Quaternion(), { auto: true, dur: 0.42, arc: 0.45, spin: 0.3 });
+  });
+}
+function intakeIndex(p) { let k = 0; for (const q of belts.pieces) { if (q === p) return k; if (q.type === 'intake') k++; } return k; }
+const build = { on: false, piece: 'straight', rot: 0, gx: 0, gz: 0, aim: false, valid: false, reason: '', del: null };
+function buildUnlocked() { return S.lv.belt >= 1; }
+function enterBuild() {
+  if (!buildUnlocked() || !playing) return;
+  build.on = true; actionHeld = false; document.body.classList.add('building'); $('buildbar').classList.remove('hidden'); renderBuildBar(); sfx.click();
+}
+function exitBuild() { build.on = false; document.body.classList.remove('building'); $('buildbar').classList.add('hidden'); belts.showPreview(null); updateHUD(); }
+const _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), _hit = new THREE.Vector3();
+function updateBuildAim() {
+  camera.updateMatrixWorld(); ray.setFromCamera(lastAimNDC, camera);
+  build.aim = false; build.del = null;
+  if (!ray.ray.intersectPlane(_plane, _hit)) { belts.showPreview(null); return; }
+  const d = Math.hypot(_hit.x - P.x, _hit.z - P.z); if (d > 11) { belts.showPreview(null); return; }
+  const c = BL.worldToCell(_hit.x, _hit.z); build.gx = c.gx; build.gz = c.gz; build.aim = true;
+  const ex = belts.logic.at(c.gx, c.gz);
+  if (ex) { build.del = ex; build.valid = false; build.reason = 'del'; belts.showPreview(ex.type, ex.gx, ex.gz, ex.rot, 'del'); return; }
+  const r = placeCheck(build.piece, c.gx, c.gz, build.rot); build.valid = r === ''; build.reason = r;
+  belts.showPreview(build.piece, c.gx, c.gz, build.rot, build.valid ? 'ok' : 'bad');
+}
+function placeCheck(type, gx, gz, rot) {
+  const f = BeltWorld.footprint(type, gx, gz, rot), cc = BL.cellCenter(gx, gz);
+  if (f.x0 < FENCE.x0 + 1 || f.x1 > FENCE.x1 - 1 || f.z0 < FENCE.z0 + 1 || f.z1 > FENCE.z1 - 1) return 'Fuori dal piazzale';
+  for (const b of colliders) if (f.x0 < b.x1 + 0.1 && f.x1 > b.x0 - 0.1 && f.z0 < b.z1 + 0.1 && f.z1 > b.z0 - 0.1) return 'C\'è qualcosa in mezzo';
+  { const vx = VAN_X, W = C.VEHICLES[VEH_MAX].cargo.W / 2 + 0.1; if (f.x1 > vx - 0.15 && f.x0 < vx + C.VEHICLES[VEH_MAX].cargo.L + 2.6 && f.z1 > VAN_Z - W && f.z0 < VAN_Z + W) return 'Qui parcheggia il furgone'; }
+  if (P.x > f.x0 - 0.3 && P.x < f.x1 + 0.3 && P.z > f.z0 - 0.3 && P.z < f.z1 + 0.3) return 'Ci sei in mezzo tu: fai un passo indietro';
+  if (st.cart > 0 && !S.cartHeld && S.cartPos && S.cartPos.x > f.x0 - 0.4 && S.cartPos.x < f.x1 + 0.4 && S.cartPos.z > f.z0 - 0.4 && S.cartPos.z < f.z1 + 0.4) return 'C\'è il carrello posato';
+  const hs = [[cc.x, cc.z], [f.x0 + 0.1, f.z0 + 0.1], [f.x1 - 0.1, f.z0 + 0.1], [f.x0 + 0.1, f.z1 - 0.1], [f.x1 - 0.1, f.z1 - 0.1]].map(([x, z]) => meshH(x, z));
+  if (type === 'intake') {
+    if (hs[0] > 0.6) return 'Troppo dentro la montagna: mettilo ai piedi del mucchio';
+    const b = BL.backPoint({ type, gx, gz, rot }); let near = false;
+    const ci = Math.floor((b.x - ORIGIN.x) / CELL), cj = Math.floor((b.z - ORIGIN.z) / CELL), r = Math.ceil(BL.INTAKE_REACH);
+    for (let j = cj - r; j <= cj + r && !near; j++) for (let i = ci - r; i <= ci + r; i++) { if (i < 0 || j < 0 || i >= N || j >= N) continue; const c = j * N + i; if (mountain.count[c] && Math.hypot(ORIGIN.x + i + 0.5 - b.x, ORIGIN.z + j + 0.5 - b.z) <= BL.INTAKE_REACH) { near = true; break; } }
+    if (!near) return 'Troppo lontano dalla montagna: il retro deve toccare il mucchio';
+    if (belts.logic.count('intake') >= intakeMax()) return `Massimo ${intakeMax()} caricator${intakeMax() > 1 ? 'i' : 'e'}: compra un altro livello di Nastri`;
+  } else if (Math.max(...hs) > 0.1) return 'Sulla montagna non si costruisce';
+  if (S.money < BL.PIECES[type].cost) return `Ti mancano ${money(BL.PIECES[type].cost - S.money)}`;
+  return '';
+}
+function placePiece() {
+  if (!build.on || !build.aim || build.del) return false;
+  const r = placeCheck(build.piece, build.gx, build.gz, build.rot);
+  if (r) { toast(r, 1600); sfx.nope(); return false; }
+  const cost = BL.PIECES[build.piece].cost; S.money -= cost;
+  belts.add(build.piece, build.gx, build.gz, build.rot); S.belts = belts.logic.serialize();
+  sfx.clunk(); dust(new THREE.Vector3(BL.cellCenter(build.gx, build.gz).x, 0.2, BL.cellCenter(build.gx, build.gz).z), 6);
+  // nice touch: after a straight, the next piece keeps the direction of the line
+  renderBuildBar(); updateHUD(); saveNow(); return true;
+}
+function dismantle(p = build.del) {
+  if (!p) return false;
+  const cost = BL.PIECES[p.type].cost; S.money += cost;
+  const lost = p.tires.length + p.hopper.length; for (const t of p.tires.concat(p.hopper.map(type => ({ type })))) { S.money += C.TIRES[t.type].value; S.stats.cleared++; S.stats.earned += C.TIRES[t.type].value; } // tires on it: sold on the spot, never lost
+  belts.remove(p); S.belts = belts.logic.serialize();
+  sfx.unclunk(); toast(`Smontato: +${money(cost)}${lost ? ` (+${lost} gomm${lost > 1 ? 'e' : 'a'} vendute)` : ''}`, 1400);
+  renderBuildBar(); updateHUD(); saveNow(); return true;
+}
+function setPiece(k) { build.piece = k; renderBuildBar(); sfx.click(); }
+function rotatePiece() { build.rot = (build.rot + 1) % 4; sfx.click(); }
+const PIECE_SVG = {
+  straight: '<svg viewBox="0 0 40 40"><rect x="4" y="12" width="32" height="16" rx="2" fill="#24262a" stroke="#c9ced3" stroke-width="2"/><path d="M11 15l5 5-5 5M21 15l5 5-5 5" stroke="#fff" stroke-width="2.6" fill="none"/></svg>',
+  curveR: '<svg viewBox="0 0 40 40"><path d="M4 12h8a16 16 0 0 1 16 16v8H12v-8a0 0 0 0 0 0 0H4z" fill="#24262a"/><path d="M4 12h6a20 20 0 0 1 20 20v4M4 28h2a8 8 0 0 1 8 8" stroke="#c9ced3" stroke-width="2" fill="none"/><path d="M10 18l5 3-3 5" stroke="#fff" stroke-width="2.4" fill="none"/></svg>',
+  curveL: '<svg viewBox="0 0 40 40" style="transform:scaleY(-1)"><path d="M4 12h8a16 16 0 0 1 16 16v8H12v-8a0 0 0 0 0 0 0H4z" fill="#24262a"/><path d="M4 12h6a20 20 0 0 1 20 20v4M4 28h2a8 8 0 0 1 8 8" stroke="#c9ced3" stroke-width="2" fill="none"/><path d="M10 18l5 3-3 5" stroke="#fff" stroke-width="2.4" fill="none"/></svg>',
+  intake: '<svg viewBox="0 0 40 40"><path d="M4 8h18l-4 12H8z" fill="#e2a91e" stroke="#1a1a1a" stroke-width="1.5"/><rect x="14" y="20" width="22" height="10" rx="2" fill="#24262a" stroke="#c9ced3" stroke-width="2"/><path d="M22 22l4 3-4 3M29 22l4 3-4 3" stroke="#fff" stroke-width="2" fill="none"/><circle cx="7" cy="30" r="5" fill="none" stroke="#c9ced3" stroke-width="2"/></svg>',
+};
+function renderBuildBar() {
+  const box = $('bpieces'); box.innerHTML = '';
+  for (const k of BL.PIECE_ORDER) {
+    const P0 = BL.PIECES[k], b = document.createElement('button'); b.className = 'piece' + (build.piece === k ? ' on' : '') + (S.money < P0.cost ? ' poor' : '');
+    const extra = k === 'intake' ? ` · ${belts.logic.count('intake')}/${intakeMax()}` : '';
+    b.innerHTML = `<kbd class="k">${P0.key}</kbd><span class="pi">${PIECE_SVG[k]}</span><b>${P0.short}</b><i>${money(P0.cost)}${extra}</i>`;
+    b.onclick = (e) => { e.stopPropagation(); setPiece(k); }; box.appendChild(b);
+  }
+}
+
 /* ---------------- HUD ---------------- */
 const fmt = new Intl.NumberFormat('it-IT');
 const money = x => '€ ' + (x < 1000 ? x.toFixed(2).replace('.', ',') : fmt.format(Math.floor(x)));
@@ -374,13 +547,14 @@ function updateHUD() {
   $('cleared').textContent = fmt.format(Math.floor(S.stats.cleared));
   const vf = vanFillCount();
   $('vfill').textContent = V.state === 'loading' ? `${vf}/${LAYOUT.cap}` : (V.state === 'away' || V.state === 'leaving' ? 'in viaggio…' : V.state === 'arriving' ? 'in arrivo…' : `${vf}/${LAYOUT.cap}`);
-  $('vbar').style.width = (100 * vf / LAYOUT.cap) + '%';
+  $('vbar').style.width = (100 * vf / LAYOUT.cap) + '%'; $('vname').textContent = VEH.name.toUpperCase();
   $('hands').textContent = `${S.hands.length}/${st.hands}`;
   $('cartchip').classList.toggle('hidden', st.cart === 0);
   $('cartn').textContent = `${S.cart.length}/${st.cart}` + (st.cart && !S.cartHeld ? ' · posato' : '');
   $('handchip').classList.toggle('dim', holding()); $('cartchip').classList.toggle('on', holding()); $('cartchip').classList.toggle('dim', !holding());
   $('parkbtn').classList.toggle('hidden', !holding());
-  const nextAff = C.UPGRADES.some(u => u.phase <= 2 && canBuy(u.id));
+  const nextAff = [...SOLD].some(id => canBuy(id));
+  $('buildbtn').classList.toggle('hidden', !buildUnlocked() || build.on);
   $('shopbtn').classList.toggle('pulse', nextAff);
 }
 const TUT = [
@@ -391,31 +565,57 @@ const TUT = [
 function updateTut() { const el = $('hint'); if (S.tut < TUT.length) { el.textContent = TUT[S.tut](); el.classList.remove('hidden'); } else el.classList.add('hidden'); }
 
 /* ---------------- shop ---------------- */
-const REQ = { cart: lv => lv.gloves >= 1 && lv.shoes >= 1 };
-function canBuy(id) { const lv = S.lv[id], c = C.costOf(id, lv); return c != null && S.money >= c && (!REQ[id] || REQ[id](S.lv)); }
-function fmtVal(u, v) { if (u.id === 'cart') return v ? `${v} gomme` : 'nessuno'; if (u.id === 'gloves') return v + (v > 1 ? ' gomme' : ' gomma'); return String(v).replace('.', ',') + ' ' + u.unit; }
+const REQ = {
+  cart: [lv => lv.gloves >= 1 && lv.shoes >= 1, 'Prima compra guanti e scarpe'],
+  helper: [lv => lv.cart >= 1, 'Prima compra il carrello'],
+  helperCart: [lv => lv.helper >= 1, 'Prima assumi Beppino'],
+  vehicle: [lv => lv.cart >= 1, 'Prima compra il carrello'],
+  belt: [lv => lv.helper >= 1, 'Prima assumi Beppino'],
+  beltSpeed: [lv => lv.belt >= 1, 'Prima sblocca i nastri'],
+};
+// what this build sells: phases 1-3 (the rest of the shop arrives with the next versions)
+const SHOP = [[1, 'A mano', ['shoes', 'gloves', 'grip']], [2, 'Il carrello', ['cart']], [3, 'Aiutanti e nastri', ['helper', 'helperCart', 'vehicle', 'belt', 'beltSpeed']]];
+const SOLD = new Set(SHOP.flatMap(x => x[2]));
+const MAXV = { vehicle: VEH_MAX };
+function maxLv(id) { return Math.min(C.maxLevel(id), MAXV[id] ?? 99); }
+function locked(id) { return REQ[id] && !REQ[id][0](S.lv); }
+function canBuy(id) { const lv = S.lv[id], c = C.costOf(id, lv); return SOLD.has(id) && lv < maxLv(id) && c != null && S.money >= c && !locked(id); }
+function fmtVal(u, v) {
+  if (u.id === 'cart') return v ? `${v} gomme` : 'nessuno'; if (u.id === 'gloves') return v + (v > 1 ? ' gomme' : ' gomma');
+  if (u.id === 'helper') return v ? `${v} aiutant${v > 1 ? 'i' : 'e'}` : 'nessuno';
+  if (u.id === 'belt') return v ? `${v} caricator${v > 1 ? 'i' : 'e'}` : 'bloccati';
+  if (u.id === 'vehicle') { const k = C.VEHICLES[v]; return `${k.name} · ${k.cap} gomme`; }
+  return String(v).replace('.', ',') + ' ' + u.unit;
+}
+const HELPER_NAMES = ['Beppino', 'Ottavio', 'Gino', 'Salvo', 'Tonino'];
 function buy(id) {
   const u = C.UPG[id], lv = S.lv[id], c = C.costOf(id, lv);
-  if (c == null || S.money < c || (REQ[id] && !REQ[id](S.lv)) || u.phase > 2) return false;
+  if (!canBuy(id)) return false;
   S.money -= c; S.lv[id]++; st = C.stats(S.lv); sfx.buy();
   if (id === 'cart' && S.lv.cart === 1) { S.cartHeld = true; while (S.hands.length && S.cart.length < st.cart) S.cart.push(S.hands.shift()); if (S.hands.length) { S.cartHeld = false; parkSpot(true); } banner('Fase 2: il carrello', isTouch ? 'Le gomme vanno sul carrello. Tocca «Posa carrello» per lasciarlo giù.' : 'Le gomme vanno sul carrello. Premi Q per posarlo, E per riprenderlo.'); }
+  else if (id === 'helper') { const n = C.UPG.helper.lv[S.lv.helper], nm = HELPER_NAMES[n - 1] || 'Un aiutante';
+    banner(n === 1 ? 'Fase 3: arriva Beppino!' : `${nm} si unisce alla squadra`, n === 1 ? 'Porta le gomme al furgone da solo. Col secondo aiutante se le passano rotolando.' : 'In fila dalla montagna al furgone: se le passano facendole rotolare. Non metterti in mezzo…'); }
+  else if (id === 'belt') banner(S.lv.belt === 1 ? 'Fase 3: nastri trasportatori' : 'Un caricatore in più', isTouch ? 'Tocca «Costruisci» e piazza i pezzi: caricatore ai piedi della montagna, nastro fino al furgone.' : 'Premi C per costruire: caricatore ai piedi della montagna, nastro fino al furgone.');
+  else if (id === 'vehicle') { banner('Furgone grande!', `${C.VEHICLES[S.lv.vehicle].cap} gomme a viaggio. ${V.state === 'loading' && !S.van.fill.length && !V.pend.length ? 'Sta arrivando adesso.' : 'Arriva al prossimo giro.'}`);
+    if (V.state === 'loading' && !S.van.fill.length && !V.pend.length) { V.state = 'closing'; V.t = 0; } }
   else banner(u.name, `${fmtVal(u, u.lv[S.lv[id]])}`);
   if (S.tut === 2) S.tut = 3;
-  refreshCart(); refreshHands(); renderShop(); updateHUD(); saveNow();
+  syncCrew(); refreshCart(); refreshHands(); renderShop(); updateHUD(); saveNow();
   return true;
 }
 function renderShop() {
   const list = $('shoplist'); list.innerHTML = '';
   $('shopmoney').textContent = money(S.money);
-  for (const ph of [1, 2]) {
-    const h = document.createElement('div'); h.className = 'phase'; h.textContent = `Fase ${ph}: ${C.PHASES[ph].name}`; list.appendChild(h);
-    for (const u of C.UPGRADES.filter(x => x.phase === ph)) {
-      const lv = S.lv[u.id], max = C.maxLevel(u.id), cost = C.costOf(u.id, lv), locked = REQ[u.id] && !REQ[u.id](S.lv);
-      const el = document.createElement('div'); el.className = 'card' + (lv >= max || cost == null ? ' maxed' : '') + (locked ? ' locked' : '');
+  for (const [ph, name, ids] of SHOP) {
+    const h = document.createElement('div'); h.className = 'phase'; h.textContent = `Fase ${ph}: ${name}`; list.appendChild(h);
+    for (const id of ids) {
+      const u = C.UPG[id], lv = S.lv[u.id], max = maxLv(u.id), cost = C.costOf(u.id, lv), lk = locked(u.id);
+      const el = document.createElement('div'); el.className = 'card' + (lv >= max || cost == null ? ' maxed' : '') + (lk ? ' locked' : ''); el.dataset.id = id;
       const icon = u.icon === 'cart' ? trolleySVG(44) : u.icon;
       const dots = Array.from({ length: max }, (_, i) => `<i class="${i < lv ? 'on' : ''}"></i>`).join('');
       const now = fmtVal(u, u.lv[lv]), next = lv < max ? fmtVal(u, u.lv[lv + 1]) : null;
-      el.innerHTML = `<div class="ic">${icon}</div><div class="tx"><b>${u.name}</b><span>${u.desc}</span><span class="eff">${next ? `${now} → <b>${next}</b>` : `${now} · al massimo`}</span><div class="dots">${dots}</div>${locked ? '<span class="req">Prima compra guanti e scarpe</span>' : ''}</div>`;
+      const soon = id === 'vehicle' && lv >= max ? '<span class="req soon">Camion e bilico: nella prossima versione</span>' : '';
+      el.innerHTML = `<div class="ic">${icon}</div><div class="tx"><b>${u.name}</b><span>${u.desc}</span><span class="eff">${next ? `${now} → <b>${next}</b>` : `${now} · al massimo`}</span><div class="dots">${dots}</div>${lk ? `<span class="req">${REQ[u.id][1]}</span>` : ''}${soon}</div>`;
       const btn = document.createElement('button'); btn.className = 'buy';
       if (lv >= max || cost == null) { btn.textContent = 'MAX'; btn.disabled = true; }
       else { btn.textContent = money(cost); btn.disabled = !canBuy(u.id); }
@@ -423,11 +623,11 @@ function renderShop() {
       el.appendChild(btn); list.appendChild(el);
     }
   }
-  const nx = document.createElement('div'); nx.className = 'phase soon'; nx.innerHTML = `Fase 3: ${C.PHASES[3].name} <small>arriva nella prossima versione</small>`; list.appendChild(nx);
-  const tease = document.createElement('div'); tease.className = 'card locked'; tease.innerHTML = `<div class="ic">👷</div><div class="tx"><b>Aiutanti</b><span>Operai che portano le gomme al furgone da soli. Poi nastri, bracci robot, carrucola col magnete, droni e il braccio ragno.</span></div>`; list.appendChild(tease);
+  const nx = document.createElement('div'); nx.className = 'phase soon'; nx.innerHTML = `Fase 4: ${C.PHASES[5].name} <small>arriva nella prossima versione</small>`; list.appendChild(nx);
+  const tease = document.createElement('div'); tease.className = 'card locked'; tease.innerHTML = `<div class="ic">🦾</div><div class="tx"><b>Bracci robot, camion e contratti</b><span>Poi la carrucola col magnete, i droni e il braccio ragno.</span></div>`; list.appendChild(tease);
 }
 let shopOpen = false;
-function openShop() { if (!playing) return; shopOpen = true; renderShop(); $('shop').classList.remove('hidden'); if (document.pointerLockElement) document.exitPointerLock(); }
+function openShop() { if (!playing) return; if (build.on) exitBuild(); shopOpen = true; renderShop(); $('shop').classList.remove('hidden'); if (document.pointerLockElement) document.exitPointerLock(); }
 function closeShop() { shopOpen = false; $('shop').classList.add('hidden'); lockPointer(); }
 
 /* ---------------- actions ---------------- */
@@ -487,26 +687,38 @@ function tryThrow() {
   if (!holding() && S.hands.length) { fromHand = true; const i = S.hands.length - 1; type = S.hands[i]; handTires[i].getWorldPosition(srcPos); handTires[i].getWorldQuaternion(srcQ); }
   else if (holding() && S.cart.length) { const i = S.cart.length - 1; type = S.cart[i]; cartTires[i].getWorldPosition(srcPos); cartTires[i].getWorldQuaternion(srcQ); }
   else return false;
+  if (!vanHasRoom(type)) return false;
+  if (fromHand) { S.hands.pop(); refreshHands(); } else { S.cart.pop(); refreshCart(); }
+  throwCD = C.PLAYER.throwInterval;
+  sfx.whoosh(0);
+  launchToVan(type, srcPos, srcQ, {});
+  return true;
+}
+function vanHasRoom(type) { return vanReady() && !!placeTire(virtFill(), LAYOUT.cap, !!C.TIRES[type].half); }
+// room for n more tires (counting the ones already flying in)
+function vanCanAccept(n) { return vanReady() && S.van.fill.length + V.pend.length + n <= LAYOUT.cap; }
+// any tire into the braid: the player's throws, Beppino & co., the end of a belt. o.auto = soft bling, no tutorial step
+let popT = 0;
+function launchToVan(type, from, q0, o = {}) {
+  if (!vanReady()) return false;
   const place = placeTire(virtFill(), LAYOUT.cap, !!C.TIRES[type].half);
   if (!place) return false;
-  if (fromHand) { S.hands.pop(); refreshHands(); } else { S.cart.pop(); refreshCart(); }
   const p = { slot: place.slot, sub: place.sub, type }; V.pend.push(p);
-  throwCD = C.PLAYER.throwInterval;
   const lp = new THREE.Vector3(), lq = new THREE.Quaternion(); slotLocal(place.slot, place.sub, type, lp, lq);
   const wq = new THREE.Quaternion();
-  sfx.whoosh(0);
-  startFlight({ kind: 'throw', p, type, from: srcPos, q0: srcQ, to: (o) => van.localToWorld(o.copy(lp)), q1: () => wq.copy(van.quaternion).multiply(lq), dur: 0.34, arc: 0.28, spin: 0.6, ease: 'line',
+  startFlight({ kind: 'throw', p, type, from: from.clone(), q0: q0.clone(), to: (v) => van.localToWorld(v.copy(lp)), q1: () => wq.copy(van.quaternion).multiply(lq), dur: o.dur || 0.34, arc: o.arc ?? 0.28, spin: o.spin ?? 0.6, ease: 'line',
     done: () => {
       V.pend.splice(V.pend.indexOf(p), 1);
-      if (p.sub) S.van.fill[p.slot].push(type); else S.van.fill[p.slot] = [type];
+      if (p.sub && S.van.fill[p.slot]) S.van.fill[p.slot].push(type); else S.van.fill[p.slot] = [type];
       rebuildCargo();
-      const val = C.TIRES[type].value; S.money += val; S.stats.earned += val; S.stats.cleared++; S.stats.thrown++; S.stats.bySize[type]++;
+      const val = C.TIRES[type].value; S.money += val; S.stats.earned += val; S.stats.cleared++; S.stats.bySize[type]++;
+      if (o.auto) S.stats.auto = (S.stats.auto || 0) + 1; else S.stats.thrown++;
       if (type === C.GOLD_ID) S.stats.gold++;
-      const s = LAYOUT.slots[p.slot]; sfx.clink(type === 3 ? 0 : type, s.row / LAYOUT.rows, 0, type === C.GOLD_ID);
-      pop(van.localToWorld(lp.clone()), '+' + money(val), type === C.GOLD_ID ? 'gold' : '');
-      if (S.tut === 1) { S.tut = 2; updateTut(); }
+      const s = LAYOUT.slots[p.slot], gold = type === C.GOLD_ID;
+      if (o.auto) { const d = Math.hypot(P.x - van.position.x, P.z - VAN_Z); sfx.clink(type === 3 ? 0 : type, s.row / LAYOUT.rows, 0, gold, Math.max(0.12, 0.5 / (1 + Math.max(0, d - 4) * 0.12))); if (popT <= 0 || gold) { pop(van.localToWorld(lp.clone()), '+' + money(val), gold ? 'gold' : 'soft'); popT = 0.18; } }
+      else { sfx.clink(type === 3 ? 0 : type, s.row / LAYOUT.rows, 0, gold); pop(van.localToWorld(lp.clone()), '+' + money(val), gold ? 'gold' : ''); if (S.tut === 1) { S.tut = 2; updateTut(); } }
       checkMilestones(); updateHUD();
-      if (S.van.fill.length >= LAYOUT.cap && !S.van.fill.some(f => f.length === 1 && f[0] === 3 && false) && V.pend.length === 0) vanFull();
+      if (S.van.fill.length >= LAYOUT.cap && V.pend.length === 0) vanFull();
     } });
   return true;
 }
@@ -545,7 +757,7 @@ function updateVan(dt) {
     case 'closing': V.doors = Math.max(0, 1 - V.t / 0.9); if (V.t >= 0.9) { sfx.doors(); V.state = 'starting'; V.t = 0; sfx.engineStart(vanDist()); } break;
     case 'starting': if (V.t >= 1.1) { V.state = 'leaving'; V.t = 0; V.engine = true; } break;
     case 'leaving': { const k = Math.min(1, V.t / 3.4); van.position.x = VAN_X + (VAN_FAR - VAN_X) * k * k; if (k >= 1) { V.state = 'away'; V.t = 0; van.visible = false; V.engine = false; S.van.fill = []; S.van.trips++; rebuildCargo(); } break; }
-    case 'away': if (V.t >= away) { V.state = 'arriving'; V.t = 0; van.visible = true; V.engine = true; sfx.horn(); } break;
+    case 'away': if (S.vehicle !== targetTier()) { setVehicle(targetTier()); van.visible = false; } if (V.t >= away) { V.state = 'arriving'; V.t = 0; van.visible = true; V.engine = true; sfx.horn(); } break;
     case 'arriving': { const k = Math.min(1, V.t / 4.2), e = 1 - Math.pow(1 - k, 2.4); van.position.x = VAN_FAR + (VAN_X - VAN_FAR) * e; if (Math.floor(V.t / 0.6) !== Math.floor((V.t - dt) / 0.6) && k < 0.95) sfx.beep(); if (k >= 1) { V.state = 'opening'; V.t = 0; V.engine = false; sfx.engineStop(vanDist()); } break; }
     case 'opening': V.doors = Math.min(1, V.t / 1.0); if (V.t >= 1.0) { V.state = 'loading'; V.t = 0; } break;
   }
@@ -557,16 +769,37 @@ function updateVan(dt) {
 }
 
 /* ---------------- movement + collisions ---------------- */
-function blocked(x, z) {
+function blocked(x, z, solidOnly = false) {
   if (x < FENCE.x0 + 0.5 || x > FENCE.x1 - 0.5 || z < FENCE.z0 + 0.5 || z > FENCE.z1 - 0.5) { if (!(x > FENCE.x1 - 0.6 && Math.abs(z - VAN_Z) < 3.8 && x < FENCE.x1 + 0.1)) return true; }
   if (meshH(x, z) > 0.55) return true;
   for (const b of colliders) if (x > b.x0 - 0.3 && x < b.x1 + 0.3 && z > b.z0 - 0.3 && z < b.z1 + 0.3) return true;
   if (van.visible) { const vx = van.position.x, W = VEH.cargo.W / 2 + 0.25; if (x > vx - 0.35 && x < vx + VEH.cargo.L + 2.0 && Math.abs(z - VAN_Z) < W + 0.25) return true; }
   if (st.cart > 0 && !S.cartHeld && S.cartPos && Math.hypot(x - S.cartPos.x, z - S.cartPos.z) < 0.6) return true;
-  if (holding() && cartPose.side < 0.5) { const D = (cartPose.D || 1.4) + 0.3, fx = x - Math.sin(P.yaw) * D, fz = z - Math.cos(P.yaw) * D; if (meshH(fx, fz) > 1.0) return true; }
+  if (belts.hit(x, z, 0.28)) return true;
+  if (!solidOnly && holding() && cartPose.side < 0.5) { const D = (cartPose.D || 1.4) + 0.3, fx = x - Math.sin(P.yaw) * D, fz = z - Math.cos(P.yaw) * D; if (meshH(fx, fz) > 1.0) return true; }
   return false;
 }
+// the helpers are solid, but never trap you: you can always step away from one
+function crewBump(x, z) { for (const h of crew.list) { const d1 = Math.hypot(x - h.x, z - h.z); if (d1 < 0.5 && d1 < Math.hypot(P.x - h.x, P.z - h.z)) return true; } return false; }
+// anti-stuck: if you ever end up inside something solid (the van parking on top of you, a belt, the trolley, a
+// container, a bad save...), slide out to the nearest free spot. The search starts toward -x, i.e. behind the van
+// (the throw zone), so an arriving van nudges you back out of the bay. dt = 0: snap there at once (load/spawn).
+function unstick(dt) {
+  if (!blocked(P.x, P.z, true)) return false;
+  let best = null;
+  for (let r = 0.2; r <= 7 && !best; r += 0.2) for (let k = 0; k < 24; k++) {
+    const a = Math.PI + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 12), x = P.x + Math.cos(a) * r, z = P.z + Math.sin(a) * r;
+    if (!blocked(x, z, true)) { best = { x, z }; break; }
+  }
+  if (!best) return false;
+  const k = dt > 0 ? Math.min(1, dt * 12) : 1;
+  P.x += (best.x - P.x) * k; P.z += (best.z - P.z) * k; P.vx = P.vz = 0;
+  if (k < 1 && Math.hypot(best.x - P.x, best.z - P.z) < 0.03) { P.x = best.x; P.z = best.z; }
+  unstuck++; return true;
+}
+let unstuck = 0;
 function updatePlayer(dt) {
+  unstick(dt);
   let fx = 0, fz = 0;
   if (keys.KeyW || keys.ArrowUp) fz += 1; if (keys.KeyS || keys.ArrowDown) fz -= 1;
   if (keys.KeyA || keys.ArrowLeft) fx -= 1; if (keys.KeyD || keys.ArrowRight) fx += 1;
@@ -577,8 +810,8 @@ function updatePlayer(dt) {
   const tvx = (-sy * fz + cy * fx) * sp, tvz = (-cy * fz - sy * fx) * sp;
   const a = 1 - Math.exp(-dt * 10); P.vx += (tvx - P.vx) * a; P.vz += (tvz - P.vz) * a;
   const nx = P.x + P.vx * dt, nz = P.z + P.vz * dt;
-  if (!blocked(nx, P.z)) P.x = nx; else P.vx = 0;
-  if (!blocked(P.x, nz)) P.z = nz; else P.vz = 0;
+  if (!blocked(nx, P.z) && !crewBump(nx, P.z)) P.x = nx; else P.vx = 0;
+  if (!blocked(P.x, nz) && !crewBump(P.x, nz)) P.z = nz; else P.vz = 0;
   const moving = Math.hypot(P.vx, P.vz);
   if (moving > 0.4) { P.bob += dt * moving * 2.4; P.stepT += dt * moving; if (P.stepT > 1.45) { P.stepT = 0; sfx.step(); } }
   const ground = Math.min(0.5, meshH(P.x, P.z));
@@ -628,6 +861,7 @@ function blockedStatic(x, z, pad) {
   for (const b of colliders) if (x > b.x0 - pad && x < b.x1 + pad && z > b.z0 - pad && z < b.z1 + pad) return true;
   if (van.visible) { const vx = van.position.x; if (x > vx - 0.9 && x < vx + VEH.cargo.L + 2.4 && Math.abs(z - VAN_Z) < VEH.cargo.W / 2 + 0.7) return true; }
   if (Math.hypot(x - P.x, z - P.z) < 0.55) return true;
+  if (belts.hit(x, z, pad)) return true;
   return false;
 }
 function parkCart() {
@@ -660,6 +894,16 @@ function lockPointer() { if (!isTouch && playing && !shopOpen && !settingsOpen) 
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (!playing) return;
+  if (build.on) {
+    if (e.code === 'KeyC' || e.code === 'Escape') { e.preventDefault(); exitBuild(); return; }
+    const i = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code); if (i >= 0) { setPiece(BL.PIECE_ORDER[i]); return; }
+    if (e.code === 'KeyR') { rotatePiece(); return; }
+    if (e.code === 'KeyX' || e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); dismantle(); return; }
+    if (e.code === 'KeyB' || e.code === 'Tab') { e.preventDefault(); exitBuild(); openShop(); }
+    if (e.code === 'KeyE' || e.code === 'Space') { e.preventDefault(); placePiece(); }
+    return;
+  }
+  if (e.code === 'KeyC') { e.preventDefault(); if (buildUnlocked()) enterBuild(); else toast('Prima sblocca i nastri trasportatori nel negozio'); }
   if (e.code === 'KeyB' || e.code === 'Tab') { e.preventDefault(); shopOpen ? closeShop() : openShop(); }
   if (e.code === 'KeyE' || e.code === 'Space') { e.preventDefault(); actionHeld = true; doAction(); }
   if (e.code === 'KeyQ') { e.preventDefault(); if (holding()) parkCart(); else if (cartDist() < 3.1) pickCart(); }
@@ -670,8 +914,10 @@ addEventListener('blur', () => { for (const k in keys) keys[k] = false; actionHe
 canvas.addEventListener('mousedown', e => {
   if (isTouch || !playing) return;
   if (!document.pointerLockElement) { lockPointer(); return; }
+  if (build.on) { if (e.button === 0) placePiece(); else if (e.button === 2) dismantle(); return; }
   if (e.button === 0) { actionHeld = true; doAction(); }
 });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mouseup', () => { actionHeld = false; });
 addEventListener('mousemove', e => {
   if (document.pointerLockElement !== canvas) return;
@@ -707,7 +953,7 @@ const endTouch = e => {
     if (joy.active && t.identifier === joy.id) { joy.active = false; joy.x = joy.y = 0; $('joy').classList.remove('on'); $('knob').style.transform = ''; continue; }
     const o = touches.get(t.identifier); touches.delete(t.identifier);
     if (o && o.moved < 14 && performance.now() - o.t0 < 400 && playing && !shopOpen) {
-      const ndc = new THREE.Vector2(t.clientX / innerWidth * 2 - 1, -(t.clientY / innerHeight) * 2 + 1); doAction(ndc);
+      const ndc = new THREE.Vector2(t.clientX / innerWidth * 2 - 1, -(t.clientY / innerHeight) * 2 + 1); if (build.on) placePiece(); else doAction(ndc);
     }
   }
 };
@@ -728,6 +974,11 @@ $('shopbtn').onclick = (e) => { e.stopPropagation(); openShop(); };
 $('parkbtn').onclick = (e) => { e.stopPropagation(); parkCart(); };
 $('pickbtn').onclick = (e) => { e.stopPropagation(); if (!pickCart() && cartDist() > 3.1) toast('Avvicinati al carrello'); };
 $('shopclose').onclick = closeShop;
+$('buildbtn').onclick = (e) => { e.stopPropagation(); enterBuild(); };
+$('brot').onclick = (e) => { e.stopPropagation(); rotatePiece(); };
+$('bplace').onclick = (e) => { e.stopPropagation(); placePiece(); };
+$('bdel').onclick = (e) => { e.stopPropagation(); if (!dismantle()) toast('Mira un pezzo per smontarlo', 1400); };
+$('bexit').onclick = (e) => { e.stopPropagation(); exitBuild(); };
 $('shop').addEventListener('click', e => { if (e.target.id === 'shop') closeShop(); });
 $('resume').onclick = () => lockPointer();
 function openSettings() { settingsOpen = true; $('settings').classList.remove('hidden'); $('pause').classList.add('hidden'); if (document.pointerLockElement) document.exitPointerLock();
@@ -756,7 +1007,12 @@ function saveNow() {
     if (f.kind === 'grab') (f.toCart ? s.cart : s.hands).push(f.type);
     else if (f.kind === 'throw') { if (f.p.sub && s.van.fill[f.p.slot]) s.van.fill[f.p.slot].push(f.type); else s.van.fill[f.p.slot] = [f.type]; s.money += C.TIRES[f.type].value; s.stats.cleared++; }
   }
+  // automation in transit (belts, hoppers, intake flights, the helpers' hands, rolling tires): seconds from the van, saved as delivered
+  const transit = crew.transit(); for (const p of belts.pieces) { for (const t of p.tires) transit.push(t.type); for (const t of p.hopper) transit.push(t); }
+  for (const f of flights) if (f.kind === 'intake') transit.push(f.type);
+  for (const t of transit) { s.money += C.TIRES[t].value; s.stats.cleared++; s.stats.earned += C.TIRES[t].value; }
   s.van.fill = s.van.fill.filter(Boolean);
+  s.belts = belts.logic.serialize();
   return SV.save(localStorage, s);
 }
 addEventListener('pagehide', saveNow);
@@ -773,7 +1029,7 @@ let frameN = 0;
 function frame(now) { frameN++;
   requestAnimationFrame(frame);
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now;
-  step(dt);
+  step(TEST && window.__freeze ? 0 : dt); // tests can freeze game time for a screenshot
   renderer.render(scene, camera);
   fpsAcc += dt; fpsN++; if (fpsAcc > 1) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; adapt(); }
 }
@@ -788,9 +1044,19 @@ function step(dt) {
   if (nearDirty || Math.hypot(P.x - nearCenter.x, P.z - nearCenter.y) > 0.8) rebuildNear();
   if (farDirty && Math.hypot(P.x - farCenter.x, P.z - farCenter.y) > 0.01 || Math.hypot(P.x - farCenter.x, P.z - farCenter.y) > 3) rebuildFar();
   updateVan(dt); updateFlights(dt); updateDust(dt);
+  crew.update(dt); updateBelts(dt); flushMountain(dt); popT -= dt;
   grabBusy = Math.max(0, grabBusy - dt); throwCD = Math.max(0, throwCD - dt);
   // hover highlight + crosshair label (desktop aims at the centre)
-  if (playing && !isTouch) {
+  if (playing && build.on) {
+    if (hover && hover.m) { hover.m.setColorAt(hover.id, hover.base); hover.m.instanceColor.needsUpdate = true; hover = null; }
+    updateBuildAim();
+    let text = '', cls = '';
+    if (!build.aim) text = 'Guarda il piazzale per piazzare';
+    else if (build.del) { text = `${isTouch ? '' : '[X] / Tasto destro · '}Smonta ${BL.PIECES[build.del.type].name} (+${money(BL.PIECES[build.del.type].cost)})`; cls = 'far'; }
+    else if (build.valid) { text = `${isTouch ? '' : 'Clic · '}Piazza ${BL.PIECES[build.piece].name} · ${money(BL.PIECES[build.piece].cost)}`; cls = 'ok'; }
+    else { text = build.reason; cls = 'bad'; }
+    $('aimlabel').textContent = text; $('aimlabel').className = cls; $('cross').className = cls; $('binfo').textContent = text; $('binfo').className = cls;
+  } else if (playing && !isTouch) {
     const rec = pickAt(lastAimNDC);
     if (hover !== rec) {
       if (hover && hover.m) { hover.m.setColorAt(hover.id, hover.base); hover.m.instanceColor.needsUpdate = true; }
@@ -816,13 +1082,14 @@ function step(dt) {
   zoneMat.opacity = carriedNow() ? (inThrowZone() ? 1 : 0.75 + Math.sin(performance.now() / 260) * 0.25) : 0.45;
   $('zonehint').classList.toggle('hidden', !(playing && carriedNow() && nearVanButOut()));
   // held button = keep working (throw cadence / grab the next tire under the crosshair)
-  if (actionHeld && playing && !shopOpen) {
+  if (actionHeld && playing && !shopOpen && !build.on) {
     if (inThrowZone() && carriedNow() && throwCD <= 0) tryThrow();
     else if (!isTouch && grabBusy <= 0) { const r = pickAt(lastAimNDC); if (r && r.free && r._t <= C.PLAYER.reach && carried() < capacity()) tryGrab(r); }
   }
   // workers watch you
   workerT += dt;
   for (const w of workers) {
+    if (!w.g.visible) continue;
     w.g.userData.anim(workerT);
     const hd = w.g.userData.head, dx = P.x - w.g.position.x, dz = P.z - w.g.position.z;
     const target = Math.atan2(-dz, dx) - w.g.rotation.y; let a = ((target + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; a = G.clamp(a, -1.3, 1.3);
@@ -847,14 +1114,14 @@ st = C.stats(S.lv);
 if (st.cart > 0 && S.cartHeld && S.hands.length) { S.cartHeld = false; parkSpot(true); } // old save with tires in both
 refreshCart(); refreshHands(); rebuildCargo();
 if (S.van.fill.length >= LAYOUT.cap) { V.state = 'closing'; V.t = 0; }
-van.position.set(VAN_X, 0, VAN_Z);
+syncCrew(); renderBuildBar();
 updatePlayer(0); rebuildNear(); rebuildFar(); updateHUD();
 if (loadedFrom !== 'new') $('play').textContent = 'CONTINUA';
 requestAnimationFrame(frame);
 
 if (TEST) {
   window.__game = {
-    S, C, mountain, LAYOUT, V, hemi, sun, scene, get st() { return st; }, get fps() { return fps; }, get remaining() { return remaining; }, get nearRecs() { return nearRecs; },
+    S, C, mountain, get LAYOUT() { return LAYOUT; }, get VEH() { return VEH; }, get van() { return van; }, V, hemi, sun, scene, get st() { return st; }, get fps() { return fps; }, get remaining() { return remaining; }, get nearRecs() { return nearRecs; },
     start, saveNow, buy, openShop, closeShop, step, renderer, camera,
     advance(sec) { for (let t = 0; t < sec; t += 0.05) step(0.05); },
     info() { return { tris: renderer.info.render.triangles, calls: renderer.info.render.calls, near: nearRecs.length, far: IM.far.count, high: IM.high.count, mid: IM.mid.count }; },
@@ -871,6 +1138,14 @@ if (TEST) {
     flights: () => flights.length, flightInfo: () => flights.map(f => ({ t: f.t, dur: f.dur, kind: f.kind })), frames: () => frameN, setMoney(m) { S.money = m; updateHUD(); },
     meshH, blocked, refreshCart, refreshHands, parkCart, pickCart, aimingAtCart, holding, cartDist,
     keys, P,
+    // v6
+    crew, belts, BL, build, syncCrew, enterBuild, exitBuild, placePiece, dismantle, setPiece, rotatePiece, placeCheck, crewStations, vanCanAccept,
+    crewState: () => crew.state(), autoTake, refreshMountain() { flushMountain(0, true); rebuildNear(); },
+    // place a piece directly (tests): same checks + cost as the build mode
+    placeAt(type, gx, gz, rot) { build.on = true; build.piece = type; build.rot = rot; build.gx = gx; build.gz = gz; build.aim = true; build.del = belts.logic.at(gx, gz); const ok = placePiece(); return ok; },
+    beltTires: () => belts.logic.tireCount(),
+    get unstuck() { return unstuck; }, unstick,
+    clearBanners() { bannerQ.length = 0; bannerT = 0; $('banner').classList.remove('show'); toastT = 0; $('toast').classList.remove('show'); },
   };
 }
 

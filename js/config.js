@@ -69,11 +69,11 @@ export const UPGRADES = [
   // phase 2
   { id: 'cart', phase: 2, icon: 'cart', machine: true, name: 'Carrello portagomme', desc: 'Il carrello portagomme in tubolare d\'acciaio: le gomme impilate una sull\'altra. Parte da 4 gomme e arriva a 10.', unit: 'gomme', lv: [0, 4, 6, 8, 10] },
   // phase 3 (not in the first playable slice)
-  { id: 'helper', phase: 3, icon: '👷', machine: true, name: 'Aiutanti', desc: 'Operai che portano le gomme al furgone da soli.', unit: 'aiutanti', lv: [0, 1, 2, 3, 4, 5], rate: 0.35 },
-  { id: 'helperCart', phase: 3, icon: 'cart', name: 'Carretti per gli aiutanti', desc: 'Ogni aiutante spinge un carretto da 6.', unit: 'x velocità', lv: [1, 2.2] },
+  { id: 'helper', phase: 3, icon: '👷', machine: true, name: 'Aiutanti', desc: 'Beppino e la sua squadra. Da solo porta le gomme a mano; dal secondo in poi si mettono in fila e se le passano facendole rotolare.', unit: 'aiutanti', lv: [0, 1, 2, 3, 4, 5], rate: 0.35 },
+  { id: 'helperCart', phase: 3, icon: '👟', name: 'Ritmo della squadra', desc: 'Scarpe e guanti nuovi per gli aiutanti: camminano, rotolano e lanciano più svelti.', unit: 'x ritmo', lv: [1, 2.2] },
   // phase 4
-  { id: 'belt', phase: 4, icon: '➰', machine: true, name: 'Nastri trasportatori', desc: 'Dalla montagna al furgone senza fare un passo.', unit: 'nastri', lv: [0, 1, 2, 3, 4], rate: 2.0 },
-  { id: 'beltSpeed', phase: 4, icon: '⏩', name: 'Motori dei nastri', desc: 'Nastri più veloci.', unit: 'x velocità', lv: [1, 1.4, 1.8] },
+  { id: 'belt', phase: 4, icon: '➰', machine: true, name: 'Nastri trasportatori', desc: 'Sblocca la costruzione: nastri dritti, curve e il caricatore che pesca dalla montagna. Ogni livello = un caricatore in più.', unit: 'caricatori', lv: [0, 1, 2, 3, 4], rate: 2.0 },
+  { id: 'beltSpeed', phase: 4, icon: '⏩', name: 'Motori dei nastri', desc: 'Nastri e caricatori più veloci.', unit: 'x velocità', lv: [1, 1.4, 1.8] },
   // phase 5
   { id: 'arm', phase: 5, icon: '🦾', machine: true, name: 'Bracci robot', desc: 'Prendono le gomme dalla montagna e le mettono sul nastro.', unit: 'bracci', lv: [0, 1, 2, 3, 4], rate: 5 },
   { id: 'armSpeed', phase: 5, icon: '⚙️', name: 'Servomotori', desc: 'Bracci più rapidi.', unit: 'x velocità', lv: [1, 1.5] },
@@ -86,7 +86,7 @@ export const UPGRADES = [
   { id: 'spider', phase: 7, icon: '🕷️', machine: true, name: 'Braccio ragno', desc: 'Il gigante finale: otto braccia che svuotano la montagna.', unit: '', lv: [0, 1], rate: 26 },
   { id: 'spiderBoost', phase: 7, icon: '🔥', name: 'Ragno turbo', desc: 'Il ragno va al doppio.', unit: 'x velocità', lv: [1, 1.6] },
   // vehicles + loading bays
-  { id: 'vehicle', phase: 3, icon: '🚚', machine: true, name: 'Mezzo più grande', desc: 'Furgone grande, poi camion, poi bilico.', unit: '', lv: [0, 1, 2, 3] },
+  { id: 'vehicle', phase: 3, icon: '🚚', machine: true, name: 'Furgone grande', desc: 'Cassone più lungo e più alto: più gomme a viaggio e un bonus di consegna più grosso.', unit: '', lv: [0, 1, 2, 3] },
   { id: 'bays', phase: 4, icon: '🅿️', name: 'Piazzole di carico', desc: 'Un altro mezzo si carica mentre il primo è via.', unit: 'piazzole', lv: [1, 2, 3, 4] },
 ];
 export const UPG = Object.fromEntries(UPGRADES.map(u => [u.id, u]));

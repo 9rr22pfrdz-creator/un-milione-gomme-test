@@ -41,18 +41,20 @@ export class Sfx {
   rnd(a, b) { return a + Math.random() * (b - a); }
 
   // rubber squeak + scrape as a tire is pulled off the pile
-  grab(size = 1, pan = 0) {
-    if (!this.ok()) return; const t = this.t, o = this.out(pan, 0.8), k = 1 - size * 0.12;
+  grab(size = 1, pan = 0, gain = 1) {
+    if (!this.ok() || gain < 0.03) return; const t = this.t, o = this.out(pan, 0.8 * gain), k = 1 - size * 0.12;
     this.noise(o, t, 0.16, 'bandpass', 900 * k, 500 * k, 1.2, 0.35);
     this.tone(o, t + 0.02, 520 * k * this.rnd(0.9, 1.1), 780 * k, 0.09, 'sine', 0.12);
     this.tone(o, t, 95 * k, 70 * k, 0.16, 'sine', 0.35);
   }
   // tire lands in the van: a bright two-tone "bling!" (C6 -> G6 with bell partials) over a soft rubber settle.
   // combo (tires landing in quick succession) and gold nudge the pitch up.
-  clink(size = 1, height = 0, pan = 0, gold = false) {
-    if (!this.ok()) return; const t = this.t, o = this.out(pan, 0.85);
-    const now = t; this._combo = (now - (this._lastBling || -9) < 1.2) ? Math.min(6, (this._combo || 0) + 1) : 0; this._lastBling = now;
-    const up = Math.pow(2, (this._combo * 0.5 + (gold ? 3 : 0) + height * 1.5) / 12) * this.rnd(0.995, 1.005);
+  // soft = an automatic delivery (helpers, belts): quieter, no combo climb, so the yard doesn't turn into a slot machine
+  clink(size = 1, height = 0, pan = 0, gold = false, soft = 0) {
+    if (!this.ok()) return; const t = this.t, o = this.out(pan, soft ? 0.85 * soft : 0.85);
+    const now = t; let combo = 0;
+    if (!soft) { this._combo = (now - (this._lastBling || -9) < 1.2) ? Math.min(6, (this._combo || 0) + 1) : 0; this._lastBling = now; combo = this._combo; }
+    const up = Math.pow(2, (combo * 0.5 + (gold ? 3 : 0) + height * 1.5 + (soft ? (Math.random() * 2 - 1) : 0)) / 12) * this.rnd(0.995, 1.005);
     const f1 = 1046.5 * up, f2 = 1568 * up; // C6, G6
     const bell = (t0, f, peak, dur) => { // clean fast attack, inharmonic bell partials, long shimmer ring-out
       this.tone(o, t0, f, f, dur, 'sine', peak, 0.0015);
@@ -71,13 +73,40 @@ export class Sfx {
     this.noise(o, t, 0.05, 'bandpass', 900 * k, 600 * k, 2, 0.1);
   }
   // tire dropped in the cart: deep thud + rattling metal frame
-  thud(n = 1, pan = 0) {
-    if (!this.ok()) return; const t = this.t, o = this.out(pan, 1);
+  thud(n = 1, pan = 0, gain = 1) {
+    if (!this.ok()) return; const t = this.t, o = this.out(pan, gain);
     this.tone(o, t, 88 * this.rnd(0.9, 1.1), 48, 0.3, 'sine', 0.8);
     this.noise(o, t, 0.12, 'lowpass', 500, 200, 0.7, 0.5);
     for (let i = 0; i < 4; i++) this.noise(o, t + 0.015 + i * this.rnd(0.025, 0.05), 0.05, 'bandpass', this.rnd(2200, 3400), 2000, 9, 0.12 / (i + 1));
     this.tone(o, t + 0.01, 610, 590, 0.18, 'triangle', 0.03 + n * 0.002);
   }
+  // a tire rolling across the concrete: low rubbery rumble with a slow wobble, fading as it slows down
+  roll(gain = 1, dur = 1.2, pan = 0) {
+    if (!this.ok() || gain < 0.03) return; const t = this.t, o = this.out(pan, 0.55 * gain);
+    const s = this.ctx.createBufferSource(); s.buffer = this.noiseBuf; const f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 260; f.Q.value = 2.5;
+    const g = this.ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.06); g.gain.setValueAtTime(0.45, t + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const lfo = this.ctx.createOscillator(), lg = this.ctx.createGain(); lfo.frequency.setValueAtTime(7, t); lfo.frequency.linearRampToValueAtTime(3, t + dur); lg.gain.value = 0.18; lfo.connect(lg); lg.connect(g.gain);
+    s.connect(f); f.connect(g); g.connect(o); s.start(t, Math.random()); s.stop(t + dur + 0.05); lfo.start(t); lfo.stop(t + dur + 0.05);
+    this.tone(o, t, 62, 48, dur * 0.8, 'sine', 0.18, 0.04);
+  }
+  // foot stops the tire / lifts it: short rubber bump
+  kick(gain = 1, pan = 0) { if (!this.ok() || gain < 0.03) return; const t = this.t, o = this.out(pan, 0.7 * gain); this.tone(o, t, 120, 70, 0.12, 'sine', 0.5); this.noise(o, t, 0.06, 'bandpass', 700, 400, 1.5, 0.25); }
+  // the helpers' annoyed sigh: breathy formant sweep down + a tired little voiced "mah"
+  sigh(gain = 1, pan = 0) {
+    if (!this.ok() || gain < 0.03) return; const t = this.t, o = this.out(pan, 0.9 * gain);
+    this.noise(o, t, 0.75, 'bandpass', 1500, 520, 2.2, 0.32, 0.12);
+    this.noise(o, t + 0.05, 0.6, 'bandpass', 2600, 1100, 3, 0.1, 0.1);
+    const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900; lp.connect(o);
+    this.tone(lp, t + 0.08, 175, 118, 0.55, 'sawtooth', 0.07, 0.08);
+  }
+  // build mode: piece snaps down (mechanical clunk + bolt ratchet) / dismantled (ratchet up + light clank)
+  clunk() {
+    if (!this.ok()) return; const t = this.t, o = this.out(0, 0.9);
+    this.tone(o, t, 110, 55, 0.25, 'sine', 0.7); this.noise(o, t, 0.08, 'lowpass', 900, 300, 0.8, 0.5);
+    this.noise(o, t + 0.005, 0.25, 'bandpass', 2400, 1800, 12, 0.12); this.tone(o, t + 0.01, 740, 720, 0.3, 'triangle', 0.06);
+    for (let i = 0; i < 3; i++) this.noise(o, t + 0.12 + i * 0.045, 0.02, 'highpass', 3500, 3500, 1, 0.12);
+  }
+  unclunk() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.7); for (let i = 0; i < 4; i++) this.noise(o, t + i * 0.04, 0.02, 'highpass', 3200, 3200, 1, 0.12); this.tone(o, t + 0.16, 520, 480, 0.2, 'triangle', 0.08); this.tone(o, t + 0.16, 90, 60, 0.15, 'sine', 0.4); }
   whoosh(pan = 0) { if (!this.ok()) return; const t = this.t, o = this.out(pan, 0.6); this.noise(o, t, 0.32, 'bandpass', 380, 1500, 1.4, 0.25, 0.08); }
   step(soft = false) { if (!this.ok()) return; const t = this.t, o = this.out(this.rnd(-0.15, 0.15), soft ? 0.25 : 0.45); this.noise(o, t, 0.07, 'highpass', this.rnd(1300, 2200), 900, 0.6, 0.22); this.noise(o, t, 0.05, 'lowpass', 300, 150, 0.7, 0.3); }
   coin(big = false) { if (!this.ok()) return; const t = this.t, o = this.out(0, big ? 0.5 : 0.25); this.tone(o, t, 1318, 1318, 0.09, 'triangle', 0.3); this.tone(o, t + 0.07, 1760, 1760, big ? 0.35 : 0.18, 'triangle', 0.3); }

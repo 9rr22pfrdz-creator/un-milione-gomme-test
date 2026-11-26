@@ -121,7 +121,9 @@ export function buildWorker(look = {}) {
     arms.forEach((a, i) => { if (L.pose === 'coffee' && i === 1) return; const sw = Math.sin(tt * 1.6 + i) * 0.025; a.sh.rotation.x = armRest[i].sx + sw; a.el.rotation.x = armRest[i].ex - sw * 0.6; });
     hips.position.y = base.hipsY - Math.abs(w) * 0.15 + br * 0.002;
   }
-  root.userData = { head, anim };
+  // rig for the helpers' work animations (walk, push-roll, kick-catch, throw); rest = the pose to come back to
+  const rest = { arms: arms.map(a => ({ sh: a.sh.rotation.clone(), el: a.el.rotation.clone(), wr: a.wr.rotation.clone() })), hipsY: base.hipsY };
+  root.userData = { head, anim, rig: { hips, spine, chest, legs, arms, neck, rest } };
   anim(0);
   return root;
 }

@@ -9,7 +9,7 @@ export const CENTER = { x: -42, z: -4 }; // world position of the mountain centr
 export const ORIGIN = { x: CENTER.x - N * CELL / 2, z: CENTER.z - N * CELL / 2 };
 export const MAX_SLOPE = 0.9;      // rise per metre before tires slide down (~42°)
 export const GRAB_LAYERS = 2;      // top 2 tires of a cell can be grabbed
-export const SHOW_BURIED = 2;      // then 2 more are visible but buried (fills the gaps)
+export const SHOW_BURIED = 4;      // then 4 more are visible but buried: a dense jumble with no bald patches
 export const SLIDE_RATIO = 1.5;    // in play a hole must be this much deeper than MAX_SLOPE before a landslide
 const GOLD_Z = 3.4;
 

@@ -109,3 +109,25 @@ body.touch .shop{padding:10px 16px}
 .slot.act{pointer-events:auto;cursor:pointer;background:transparent;border:0;font:inherit;font-weight:700;color:#cfe0ff}
 .slot.act:hover{background:rgba(255,255,255,.08)}
 body.touch .slot.act{padding:10px 16px}
+/* v6: build mode (blueprint) + soft automatic pops */
+.pop.soft{font-size:15px;color:#e6f4ff;opacity:.85}
+.slot.build{color:#9fd4ff}
+body.building .hotbar{display:none}
+body.building #cross{border-color:#7cc8ff}
+.buildbar{position:absolute;bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);pointer-events:auto;background:rgba(8,22,40,.78);border:1px solid rgba(110,190,255,.55);border-radius:12px;padding:8px 10px 6px;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);box-shadow:0 0 22px rgba(60,160,255,.25);color:#dff0ff;min-width:min(620px,94vw)}
+.btitle{font-size:12px;font-weight:700;letter-spacing:.04em;margin-bottom:6px;color:#bfe2ff}.btitle small{font-weight:500;opacity:.75;letter-spacing:0}
+.btitle .bp{background:#3aa0ff;color:#04182c;padding:1px 6px;border-radius:4px;font-weight:900}
+.bpieces{display:flex;gap:6px}
+.piece{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px 5px;border-radius:9px;border:1px solid rgba(120,190,255,.3);background:rgba(255,255,255,.04);color:#e8f4ff;font:inherit;cursor:pointer;position:relative}
+.piece .k{position:absolute;top:4px;left:5px}
+.piece .pi svg{width:34px;height:34px;display:block}
+.piece b{font-size:12.5px}.piece i{font-style:normal;font-size:11.5px;color:#9fd0ff;font-variant-numeric:tabular-nums}
+.piece.on{background:rgba(58,160,255,.28);border-color:#7cc8ff;box-shadow:0 0 0 1px #7cc8ff inset}
+.piece.poor i{color:#ff9a8f}
+.bctl{display:flex;gap:6px;margin-top:6px;justify-content:center}
+.bk{pointer-events:auto;background:rgba(255,255,255,.07);border:1px solid rgba(120,190,255,.3);border-radius:7px;color:#e8f4ff;font:inherit;font-size:12.5px;font-weight:700;padding:5px 10px;cursor:pointer;display:flex;align-items:center;gap:5px}
+.bk.tch{display:none}body.touch .bk.tch{display:flex;background:rgba(58,160,255,.35)}
+body.touch .bk{padding:10px 14px;font-size:14px}body.touch .piece{padding:9px 4px}
+#binfo{text-align:center;font-size:12px;min-height:16px;margin-top:4px;opacity:.9}#binfo.bad{color:#ff9a8f}#binfo.ok{color:#9dffb4}#binfo.far{color:#ffc58a}
+body:not(.touch) #binfo{display:none}
+.req.soon{color:#9fd0ff}

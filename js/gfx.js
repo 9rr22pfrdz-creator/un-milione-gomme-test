@@ -59,9 +59,9 @@ function tireProfile(R, ri, w, detail = 1) {
   for (const p of shoulder(1).reverse()) pts.push([p[0], p[1], 1 - p[2]]);
   for (const p of upper.reverse()) pts.push([p[0], p[1], 1 - p[2]]);
   // bead lip + inner liner (visible through the hole)
-  pts.push([ri + 0.012, w * 0.3, 0.02]);
-  if (detail > 0.4) { pts.push([R - w * 0.32, w * 0.3, 0.02]); pts.push([R - w * 0.32, -w * 0.3, 0.02]); }
-  pts.push([ri + 0.012, -w * 0.3, 0.02]);
+  pts.push([ri + 0.012, w * 0.3, 0.043]);
+  if (detail > 0.4) { pts.push([R - w * 0.32, w * 0.3, 0.043]); pts.push([R - w * 0.32, -w * 0.3, 0.043]); } // liner: dark charcoal band
+  pts.push([ri + 0.012, -w * 0.3, 0.043]);
   pts.push([lower[0][0], lower[0][1], 0]);
   return { pts: pts.map(p => new THREE.Vector2(p[0], p[1])), vs: pts.map(p => p[2]) };
 }
@@ -85,7 +85,7 @@ export function tireTextures() {
   for (const flip of [false, true]) {
     const V = v => flip ? 1 - v : v, B = (v0, v1, col, bump) => band(Math.min(V(v0), V(v1)), Math.max(V(v0), V(v1)), col, bump);
     B(0, 0.035, '#5e5e62', '#b0b0b0');       // bead (rim highlight)
-    B(0.035, 0.05, '#151516', '#5a5a5a');
+    B(0.035, 0.052, '#222428', '#5a5a5a');   // inner liner (seen through the hole): charcoal rubber
     B(0.115, 0.13, '#56565a', '#b8b8b8');    // rim protector line
     B(0.232, 0.243, '#4e4e52', '#b0b0b0');
     // lettering band
@@ -150,22 +150,26 @@ export function asphaltTexture() {
   return tex(c, { rep: [3, 14] });
 }
 export function pileTexture() {
-  // what the bulk of the mountain looks like from afar: a jumble of tires seen at all angles
+  // the core under the 3D tires: deep shadowed rubber crevices, no painted rings. Gaps between tires read as shadow.
   const S = 512, [c, x] = cvs(S, S), [b, y] = cvs(S, S);
-  x.fillStyle = '#121214'; x.fillRect(0, 0, S, S); y.fillStyle = '#000'; y.fillRect(0, 0, S, S);
-  for (let i = 0; i < 260; i++) {
-    const cx = rand(0, S), cy = rand(0, S), r = rand(22, 34), sq = rand(0.35, 1), an = rand(0, Math.PI);
-    for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
-      for (const [ctx, outer, inner, hole] of [[x, (() => { const g = rand(34, 54) | 0; return `rgb(${g},${g},${g + 1})`; })(), '#3e3e40', '#0a0a0a'], [y, '#d0d0d0', '#a0a0a0', '#202020']]) {
-        ctx.save(); ctx.translate(cx + dx, cy + dy); ctx.rotate(an); ctx.scale(1, sq);
-        ctx.fillStyle = outer; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
-        ctx.strokeStyle = inner; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, r * 0.82, 0, 7); ctx.stroke();
-        ctx.fillStyle = hole; ctx.beginPath(); ctx.arc(0, 0, r * 0.6, 0, 7); ctx.fill();
-        ctx.restore();
-      }
-    }
+  x.fillStyle = '#0b0b0c'; x.fillRect(0, 0, S, S); y.fillStyle = '#202020'; y.fillRect(0, 0, S, S);
+  const wrap = (fn) => { for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) fn(dx, dy); };
+  // soft low-frequency shading: darker pockets and slightly lit rubber humps
+  for (let i = 0; i < 90; i++) {
+    const cx = rand(0, S), cy = rand(0, S), r = rand(30, 90), dark = Math.random() < 0.55;
+    wrap((dx, dy) => { const g = x.createRadialGradient(cx + dx, cy + dy, 0, cx + dx, cy + dy, r); g.addColorStop(0, dark ? 'rgba(0,0,0,0.55)' : 'rgba(40,41,44,0.45)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(cx + dx - r, cy + dy - r, r * 2, r * 2); });
   }
-  speck(x, S, S, 5000, 40, 90, 0.2);
+  // fragments of tread and sidewall peeking out of the dark (short arcs, never full rings)
+  for (let i = 0; i < 520; i++) {
+    const cx = rand(0, S), cy = rand(0, S), r = rand(10, 30), a0 = rand(0, 7), len = rand(0.5, 1.5), lw = rand(2, 6), g = rand(26, 46) | 0;
+    wrap((dx, dy) => {
+      x.strokeStyle = `rgba(${g},${g},${g + 3},${rand(0.5, 0.9)})`; x.lineWidth = lw; x.beginPath(); x.arc(cx + dx, cy + dy, r, a0, a0 + len); x.stroke();
+      y.strokeStyle = `rgba(200,200,200,0.6)`; y.lineWidth = lw; y.beginPath(); y.arc(cx + dx, cy + dy, r, a0, a0 + len); y.stroke();
+    });
+  }
+  // crevice cracks
+  for (let i = 0; i < 140; i++) { x.strokeStyle = 'rgba(0,0,0,0.7)'; x.lineWidth = rand(1, 3); x.beginPath(); let px = rand(0, S), py = rand(0, S); x.moveTo(px, py); for (let k = 0; k < 4; k++) { px += rand(-18, 18); py += rand(-18, 18); x.lineTo(px, py); } x.stroke(); }
+  speck(x, S, S, 7000, 18, 52, 0.25, 1.8); speck(y, S, S, 5000, 40, 160, 0.3, 2);
   return { map: tex(c, { rep: [1, 1], aniso: 8 }), bump: tex(b, { srgb: false, rep: [1, 1], aniso: 8 }) };
 }
 export function fenceTexture() {
@@ -225,7 +229,7 @@ export function wheelGeo(R, w, rimR) {
 // local frame: x = 0 at the rear opening, +x toward the cab; z lateral; y up. Cargo floor at fl.
 export function buildVan(veh, mats, tireMat) {
   const g = new THREE.Group();
-  const { L, W, H } = veh.cargo, fl = 0.62, t = 0.045, Wo = W + 2 * t, top = fl + H;
+  const { L, W, H } = veh.cargo, fl = 0.72, t = 0.045, Wo = W + 2 * t, top = fl + H;
   const paint = new THREE.MeshStandardMaterial({ color: veh.color, roughness: 0.32, metalness: 0.35 });
   const P = { paint: [], black: [], glass: [], ply: [], chrome: [], red: [], amber: [], head: [], plastic: [] };
   // cargo box
@@ -264,13 +268,13 @@ export function buildVan(veh, mats, tireMat) {
   // side sills + wheel arches + wheels
   for (const s of [1, -1]) P.black.push([box(L + cl, 0.12, 0.04), M((L + cl) / 2, fl - 0.12, s * (Wo / 2 + 0.01))]);
   P.black.push([box(L + cl, 0.2, W * 0.6), M((L + cl) / 2, 0.45, 0)]);
-  const wr = 0.34, ww = 0.22, wz = Wo / 2 - 0.12, wheel = wheelGeo(wr, ww, 0.2);
+  const wr = 0.31, ww = 0.22, wz = Wo / 2 - 0.12, wheel = wheelGeo(wr, ww, 0.19); // wheel tops (0.62) + arches (0.68) stay under the floor (0.72)
   const wheelX = [0.8, x0 + cl - 0.55];
   if (L > 3.5) wheelX.push(1.55);
   for (const wx of wheelX) for (const s of [1, -1]) {
     const tm = new THREE.Mesh(wheel.tire, tireMat); tm.position.set(wx, wr, s * wz); tm.rotation.x = Math.PI / 2; tm.castShadow = true; g.add(tm);
     const rm = new THREE.Mesh(wheel.rim, mats.steel); rm.position.copy(tm.position); rm.rotation.x = Math.PI / 2; g.add(rm);
-    P.black.push([cyl(wr + 0.05, wr + 0.05, 0.05, 16, 1), M(wx, wr + 0.02, s * (Wo / 2 + 0.005), Math.PI / 2)]);
+    P.black.push([cyl(wr + 0.04, wr + 0.04, 0.05, 16, 1), M(wx, wr + 0.02, s * (Wo / 2 + 0.005), Math.PI / 2)]);
   }
   // number plate
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.11), new THREE.MeshStandardMaterial({ map: signTexture([{ t: 'GM 100 0K', y: 0.52, size: 150 }], '#f4f4f4', '#1a2a6a', 512, 112), roughness: 0.4 }));
