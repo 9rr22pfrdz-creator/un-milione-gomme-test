@@ -85,10 +85,11 @@ export const UPGRADES = [
   { id: 'fascioni', phase: 6, icon: '⭕', machine: true, name: 'Macchina dei fascioni', desc: 'Due dischi d\'acciaio tagliano i fianchi delle gomme: restano i fascioni, che infili a mano uno dentro l\'altro (tutun tutun) in pile da 10 per il fornitore.', unit: '', lv: [0, 1] },
   { id: 'shredder', phase: 6, icon: '⚙️', machine: true, name: 'Trituratore', desc: 'Bialbero da piazzare col blueprint: macina le gomme in granulato di gomma, venduto a peso (più di quanto vale la gomma intera). Ogni livello = un trituratore in più.', unit: 'trituratori', lv: [0, 1, 2] },
   // phase 7
-  { id: 'drones', phase: 7, icon: '🚁', machine: true, name: 'Squadriglie di droni', desc: 'Quattro droni per squadriglia, ognuno porta una gomma.', unit: 'squadriglie', lv: [0, 1, 2, 3, 4], rate: 6 },
-  { id: 'droneSpeed', phase: 7, icon: '🔋', name: 'Batterie dei droni', desc: 'Droni più veloci.', unit: 'x velocità', lv: [1, 1.5] },
-  { id: 'spider', phase: 7, icon: '🕷️', machine: true, name: 'Braccio ragno', desc: 'Il gigante finale: otto braccia che svuotano la montagna.', unit: '', lv: [0, 1], rate: 26 },
-  { id: 'spiderBoost', phase: 7, icon: '🔥', name: 'Ragno turbo', desc: 'Il ragno va al doppio.', unit: 'x velocità', lv: [1, 1.6] },
+  { id: 'drones', phase: 7, icon: '🚁', machine: true, name: 'Flotta di droni', desc: 'Quadricotteri industriali che decollano dalla piazzola DRONI, pescano le gomme dalla montagna e le portano al mezzo, al trituratore o alla macchina dei fascioni. Ogni livello = 2 droni in più (fino a 8).', unit: 'droni', lv: [0, 2, 4, 6, 8], rate: 3 },
+  { id: 'droneSpeed', phase: 7, icon: '🔋', name: 'Batterie dei droni', desc: 'Batterie e motori nuovi: i droni volano più svelti.', unit: 'x velocità', lv: [1, 1.5] },
+  { id: 'droneLift', phase: 7, icon: '🪝', name: 'Gancio doppio', desc: 'Un gancio sotto la pancia più robusto: ogni drone porta due gomme alla volta.', unit: 'gomme per volo', lv: [1, 2] },
+  { id: 'spider', phase: 7, icon: '🕷️', machine: true, name: 'Braccio a ragno', desc: 'L\'evoluzione dei bracci: una torretta esagonale con quattro braccia arancioni che lavorano insieme e svuotano la montagna a ritmo sostenuto. Si piazza col blueprint (tasto 8).', unit: '', lv: [0, 1], rate: 26 },
+  { id: 'spiderBoost', phase: 7, icon: '🔥', name: 'Ragno turbo', desc: 'Pompe idrauliche maggiorate: le quattro braccia vanno molto più svelte.', unit: 'x velocità', lv: [1, 1.6] },
   // vehicles + loading bays
   { id: 'vehicle', phase: 3, icon: '🚚', machine: true, name: 'Mezzi più grandi', desc: 'Furgone grande, poi il camion e infine il bilico: più gomme a viaggio e un bonus di consegna più grosso.', unit: '', lv: [0, 1, 2, 3] },
   { id: 'bays', phase: 4, icon: '🅿️', name: 'Piazzole di carico', desc: 'Un altro mezzo si carica mentre il primo è via.', unit: 'piazzole', lv: [1, 2, 3, 4] },
@@ -116,6 +117,7 @@ COSTS.armGrab = [12000, 26000];
 COSTS.cableSpeed = [24000];
 COSTS.fascioni = [15000];
 COSTS.shredder = [20000, 45000];
+COSTS.droneLift = [90000];
 
 export function costOf(id, level) { const c = COSTS[id]; return c && level < c.length ? c[level] : null; }
 export function maxLevel(id) { return UPG[id].lv.length - 1; }

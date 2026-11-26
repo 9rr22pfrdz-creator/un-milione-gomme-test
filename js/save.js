@@ -1,6 +1,6 @@
 // Save/load with a stable key + backup. Pure: storage is injected (localStorage in the browser).
 // No offline progress: nothing is ever computed from the time spent away.
-import { defaultLevels, UPGRADES, maxLevel, stats } from './config.js';
+import { defaultLevels, UPGRADES, UPG, maxLevel, stats } from './config.js';
 import { defaultContracts, normalizeContracts } from './contracts.js';
 import { defaultFascioni, normalizeFascioni, defaultGranulate, normalizeGranulate, normalizePulleys, normalizeShredders } from './fase5.js';
 
@@ -29,6 +29,8 @@ export function defaultState() {
     contracts: defaultContracts(), // v7: {list, active, done, seq, earned} (+ v8 unlock {fascioni, granulato})
     pulleys: [],              // v8: carrucole magnetiche [{a:{gx,gz}, b:{gx,gz}, pick}] (how many = lv.pulley)
     shredders: [],            // v8: trituratori [{gx, gz, rot, kg}] (how many = lv.shredder)
+    spiders: [],              // v1.0: braccio a ragno [{gx, gz}] (how many = lv.spider)
+    ended: false,             // v1.0: the 1,000,000th tire was thrown (free roam of the empty yard)
     fascioni: defaultFascioni(), // v8: {ready, stack, bundles, pallet, cut}
     granulate: defaultGranulate(), // v8: {kg, sacks} granulate produced
     player: { x: 3, z: 0.5, yaw: Math.PI / 2, pitch: -0.12 },
@@ -94,6 +96,16 @@ export function normalize(raw) {
   { const taken = new Set(s.belts.map(b => b.gx + ',' + b.gz).concat(s.arms.map(a => a.gx + ',' + a.gz)));
     s.pulleys = normalizePulleys(raw.pulleys, [0, 1, 2, 3][s.lv.pulley] || 0, taken);
     s.shredders = normalizeShredders(raw.shredders, [0, 1, 2][s.lv.shredder] || 0, taken); }
+  // v1.0: the spider arm (integer cells, never more than bought) and the finale flag
+  if (Array.isArray(raw.spiders)) {
+    const max = UPG.spider ? (UPG.spider.lv[s.lv.spider] || 0) : 0, seen = new Set();
+    for (const q of raw.spiders) {
+      if (s.spiders.length >= max) break;
+      if (!isObj(q) || !Number.isInteger(q.gx) || !Number.isInteger(q.gz) || Math.abs(q.gx) > 200 || Math.abs(q.gz) > 200) continue;
+      const k = q.gx + ',' + q.gz; if (seen.has(k)) continue; seen.add(k); s.spiders.push({ gx: q.gx, gz: q.gz });
+    }
+  }
+  s.ended = raw.ended === true;
   s.fascioni = normalizeFascioni(raw.fascioni);
   s.granulate = normalizeGranulate(raw.granulate);
   if (s.lv.fascioni >= 1) s.contracts.unlock.fascioni = true;

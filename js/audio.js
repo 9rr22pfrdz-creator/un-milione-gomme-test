@@ -201,6 +201,45 @@ export class Sfx {
   shred(gain = 1) { if (!this.ok() || gain < 0.04) return; const t = this.t, o = this.out(0, 0.75 * gain);
     this.tone(o, t, 55, 48, 0.8, 'sawtooth', 0.12, 0.05); this.tone(o, t, 82, 70, 0.8, 'square', 0.05, 0.05); this.noise(o, t, 0.85, 'lowpass', 420, 240, 1.2, 0.35, 0.04);
     for (let i = 0; i < 7; i++) this.noise(o, t + 0.05 + i * 0.1 + Math.random() * 0.04, 0.05, 'bandpass', this.rnd(700, 1600), 500, 2, 0.28); }
+  // ---- v1.0 Fase 6-7 + finale ----
+  // drone fleet: ONE soft continuous hum for the whole fleet (never a swarm of buzzers): two detuned
+  // sines + gently filtered air noise, a slow wobble. level 0..1 = how many drones fly how close
+  setDrones(level = 0) {
+    if (!this.ctx) return;
+    if (level > 0.001 && !this.drone) {
+      const c = this.ctx, o1 = c.createOscillator(), o2 = c.createOscillator(), lp = c.createBiquadFilter(), g = c.createGain();
+      o1.type = 'triangle'; o2.type = 'sine'; o1.frequency.value = 182; o2.frequency.value = 187.5; lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 0.4; g.gain.value = 0;
+      const n = c.createBufferSource(); n.buffer = this.noiseBuf; n.loop = true; const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 650; nf.Q.value = 0.8; const ng = c.createGain(); ng.gain.value = 0.5;
+      const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 0.6; lg.gain.value = 4; lfo.connect(lg); lg.connect(o1.frequency); lg.connect(o2.frequency);
+      o1.connect(lp); o2.connect(lp); n.connect(nf); nf.connect(ng); ng.connect(lp); lp.connect(g); g.connect(this.bus); o1.start(); o2.start(); n.start(); lfo.start();
+      this.drone = { o1, o2, g, lp };
+    }
+    if (!this.drone) return;
+    const t = this.ctx.currentTime, l = Math.max(0, Math.min(1, level));
+    this.drone.g.gain.setTargetAtTime(this.muted ? 0 : 0.03 * l, t, 0.4);
+    this.drone.o1.frequency.setTargetAtTime(176 + l * 16, t, 0.6); this.drone.o2.frequency.setTargetAtTime(181 + l * 17, t, 0.6);
+  }
+  // everything powering down at the last tire: a long falling whine + relays clicking off + a soft thump
+  windDown() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.55);
+    this.tone(o, t, 420, 38, 2.6, 'sawtooth', 0.06, 0.05); this.tone(o, t, 210, 24, 2.8, 'triangle', 0.12, 0.05); this.noise(o, t, 2.2, 'bandpass', 1200, 150, 1.5, 0.12, 0.1);
+    for (let i = 0; i < 6; i++) this.noise(o, t + 0.25 + i * 0.32 + Math.random() * 0.1, 0.03, 'bandpass', 2600, 1800, 3, 0.25);
+    this.tone(o, t + 2.4, 70, 40, 0.4, 'sine', 0.3); }
+  // the celebration: a brassy major fanfare (stacked saw/triangle, soft attack) + a crowd of claps and cheers
+  fanfare() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.5);
+    const seq = [[0, 523], [0.16, 659], [0.32, 784], [0.48, 1047], [0.74, 784], [0.9, 1047]];
+    seq.forEach(([d, f]) => { this.tone(o, t + d, f, f, 0.32, 'sawtooth', 0.06, 0.02); this.tone(o, t + d, f, f, 0.36, 'triangle', 0.16, 0.02); });
+    for (const f of [523, 659, 784, 1047]) { this.tone(o, t + 1.1, f, f, 1.6, 'sawtooth', 0.035, 0.05); this.tone(o, t + 1.1, f, f, 1.8, 'triangle', 0.1, 0.05); }
+    this.tone(o, t + 1.1, 131, 131, 1.8, 'triangle', 0.25, 0.05); }
+  applause(dur = 3.5) { if (!this.ok()) return; const t = this.t;
+    for (let i = 0; i < dur * 26; i++) { const d = Math.random() * dur, k = Math.max(0.15, 1 - d / dur), o = this.out(this.rnd(-0.7, 0.7), 0.35 * k); this.noise(o, t + d, 0.03, 'bandpass', this.rnd(1300, 2600), 900, 1.4, 0.4); }
+    for (let i = 0; i < 4; i++) { const d = 0.1 + i * 0.6 + Math.random() * 0.3, o = this.out(this.rnd(-0.5, 0.5), 0.12); const f = this.rnd(300, 420); this.tone(o, t + d, f, f * 1.5, 0.35, 'sawtooth', 0.08, 0.05); } } // "evvai!" whoops
+  // the reversing truck: the unmistakable beep... beep... beep...
+  reverseBeep(dist = 10) { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.45 * this.engAtt(dist)); this.tone(o, t, 1180, 1180, 0.42, 'square', 0.16, 0.01); this.tone(o, t, 2360, 2360, 0.4, 'sine', 0.03, 0.01); }
+  // dump bed hydraulics: pump whine + hiss
+  hydraulic(dur = 2.2, dist = 10) { if (!this.ok()) return; const t = this.t, o = this.out(0.2, 0.5 * this.engAtt(dist));
+    this.noise(o, t, 0.5, 'highpass', 4200, 3000, 0.7, 0.3, 0.01); this.tone(o, t + 0.2, 160, 240, dur, 'sawtooth', 0.04, 0.2); this.noise(o, t + 0.2, dur, 'bandpass', 700, 500, 3, 0.1, 0.2); }
+  // the whole crew going "...": one deflated low hum
+  silence() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.2); this.tone(o, t, 140, 110, 1.4, 'sine', 0.08, 0.3); }
   startWind() {
     const c = this.ctx, s = c.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;
     const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420;

@@ -164,6 +164,13 @@ export class ArmWorld {
     poseArm(a.rig, a.pose); if (pop) g.scale.setScalar(0.01);
     this.list.push(a); return a;
   }
+  // a limb mounted on something else (the spider turret): free position, no grid cell, pedestal hidden
+  addFree(x, z, yaw0 = 0, extra = {}) {
+    const g = buildArm(); g.position.set(x, 0, z); this.host.scene.add(g);
+    for (const ch of g.children) if (ch.isMesh) ch.visible = false;
+    const a = { type: 'limb', gx: null, gz: null, rot: 0, x, z, g, rig: g.userData.rig, state: 'idle', t: Math.random() * 0.9, pose: { ...REST, yaw: yaw0 }, from: null, to: null, held: [], target: null, dest: null, cycles: 0, pop: null, wait: 0, ...extra };
+    poseArm(a.rig, a.pose); this.list.push(a); return a;
+  }
   remove(a) { const i = this.list.indexOf(a); if (i < 0) return null; this.list.splice(i, 1); this.host.scene.remove(a.g); for (const h of a.held) this.host.freeMesh(h.mesh); const types = a.held.map(h => h.type); a.held = []; return types; }
   load(list) { for (const a of this.list.slice()) this.remove(a); for (const q of list || []) this.add(q.gx, q.gz, q.rot, false); }
   transit() { const out = []; for (const a of this.list) for (const h of a.held) out.push(h.type); return out; }
