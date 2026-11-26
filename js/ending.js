@@ -134,7 +134,7 @@ export class Ending {
     const P = H.P, bep = this.people.find(p => p.beppino) || this.people[0];
     this.bep = bep;
     if (bep) { // never more than ~9 m away: he jogs in from the side
-      const d = Math.hypot(bep.x - P.x, bep.z - P.z); if (d > 9) { const k = 9 / d; bep.x = P.x + (bep.x - P.x) * k; bep.z = P.z + (bep.z - P.z) * k; }
+      const d = Math.hypot(bep.x - P.x, bep.z - P.z); if (d > 8) { const k = 8 / d; bep.x = P.x + (bep.x - P.x) * k; bep.z = P.z + (bep.z - P.z) * k; }
       bep.g.visible = true;
     }
     this.confetti();
@@ -270,7 +270,7 @@ export class Ending {
   beppino(p, dt, R) {
     const P = this.host.P, dx = P.x - p.x, dz = P.z - p.z, d = Math.hypot(dx, dz), want = Math.atan2(-dz, dx);
     if (d > 1.15) { // walks over to you
-      const sp = 2.4; p.x += dx / d * Math.min(sp * dt, d - 1.15); p.z += dz / d * Math.min(sp * dt, d - 1.15);
+      const sp = 3.2; p.x += dx / d * Math.min(sp * dt, d - 1.15); p.z += dz / d * Math.min(sp * dt, d - 1.15);
       p.yaw += wrap(want - p.yaw) * Math.min(1, dt * 8); p.ph += dt * 7.5; walkPose(R, p.ph); p.hand = 0;
     } else { // ...and offers his hand: a firm handshake
       p.yaw += wrap(want - p.yaw) * Math.min(1, dt * 6); p.hand = Math.min(1, (p.hand || 0) + dt * 2.5); this.handshake = true;

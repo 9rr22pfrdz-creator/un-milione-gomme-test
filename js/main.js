@@ -220,7 +220,7 @@ function tireXform(c, index, L, type, outPos, outQuat) {
   outPos.set(px, meshH(px, pz) + lift, pz);
   return t;
 }
-function tint(c, index, L, type) { const k = type === C.GOLD_ID ? 1 : (0.95 + hash2(index * 0.13, c * 0.29) * 0.45) * (L >= 2 ? 0.86 - (L - 2) * 0.07 : 1); return _col.setRGB(k, k * 0.985, k * 0.97); }
+function tint(c, index, L, type) { const k = type === C.GOLD_ID ? 1 : (0.95 + hash2(index * 0.13, c * 0.29) * 0.45) * (L >= 4 ? 0.86 - (L - 4) * 0.07 : 1); return _col.setRGB(k, k * 0.985, k * 0.97); }
 function setInst(m, i, pos, quat, t, k = 1) { _sc.set(k * t.R / T16.R, k * t.w / T16.w, k * t.R / T16.R); _m4.compose(pos, quat, _sc); m.setMatrixAt(i, _m4); }
 function rebuildNear() {
   const px = P.x, pz = P.z, R = QP.near, RH = QP.high;
@@ -238,7 +238,8 @@ function rebuildNear() {
       const id = cnt[key]; if (id >= m.instanceMatrix.count) continue;
       cnt[key]++;
       setInst(m, id, pos, quat, t); m.setColorAt(id, tint(c, index, L, type));
-      nearRecs.push({ c, index, L, type, pos, quat, r: t.R * (L >= 2 ? 0.6 : 0.92), free: L < GRAB_LAYERS, m, id, base: _col.clone() });
+      const free = mountain.isFree(c, index);
+      nearRecs.push({ c, index, L, type, pos, quat, r: t.R * (free ? 0.95 : 0.6), free, m, id, base: _col.clone() });
     }
   }
   for (const k in cnt) { IM[k].count = cnt[k]; IM[k].instanceMatrix.needsUpdate = true; IM[k].instanceColor.needsUpdate = true; }
@@ -1154,10 +1155,11 @@ function pickAt(ndc) {
   for (const r of nearRecs) {
     const ox = r.pos.x - o.x, oy = r.pos.y - o.y, oz = r.pos.z - o.z;
     const tca = ox * d.x + oy * d.y + oz * d.z; if (tca < 0) continue;
-    const d2 = ox * ox + oy * oy + oz * oz - tca * tca; if (d2 > r.r * r.r) continue;
-    const t = tca - Math.sqrt(r.r * r.r - d2);
-    // prefer free tires over a buried one right behind them
-    const score = t + (r.free ? 0 : 0.25);
+    // grabbable tires get a generous aim radius (no pixel hunting); buried ones only count on a direct hit
+    const rr = r.free ? r.r * 1.3 : r.r, d2 = ox * ox + oy * oy + oz * oz - tca * tca; if (d2 > rr * rr) continue;
+    const t = tca - Math.sqrt(rr * rr - d2);
+    // prefer free tires over a buried one right next to / behind them; among free ones, the most centred wins ties
+    const score = t + (r.free ? Math.sqrt(d2) / rr * 0.15 : 0.7);
     if (score < bt) { bt = score; best = r; best._t = t; }
   }
   return best;
@@ -1692,8 +1694,8 @@ if (TEST) {
     block() { blockSave = true; }, unblock() { blockSave = false; },
     teleport(x, z, yaw = P.yaw, pitch = P.pitch) { P.x = x; P.z = z; P.yaw = yaw; P.pitch = pitch; P.vx = P.vz = 0; updatePlayer(0); rebuildNear(); },
     lookAt(x, y, z) { const dx = x - P.x, dz = z - P.z, dy = y - (P.eye + Math.min(0.5, meshH(P.x, P.z))); P.yaw = Math.atan2(-dx, -dz); P.pitch = Math.atan2(dy, Math.hypot(dx, dz)); updatePlayer(0); },
-    free() { return nearRecs.filter(r => r.free).map(r => ({ c: r.c, index: r.index, type: r.type, x: r.pos.x, y: r.pos.y, z: r.pos.z })); },
-    buried() { return nearRecs.filter(r => !r.free).map(r => ({ c: r.c, index: r.index, type: r.type, x: r.pos.x, y: r.pos.y, z: r.pos.z })); },
+    free() { return nearRecs.filter(r => r.free).map(r => ({ c: r.c, index: r.index, L: r.L, type: r.type, x: r.pos.x, y: r.pos.y, z: r.pos.z })); },
+    buried() { return nearRecs.filter(r => !r.free).map(r => ({ c: r.c, index: r.index, L: r.L, type: r.type, x: r.pos.x, y: r.pos.y, z: r.pos.z })); },
     pickCenter() { const r = pickAt(new THREE.Vector2(0, 0)); return r ? { c: r.c, index: r.index, free: r.free, type: r.type, t: r._t } : null; },
     click() { doAction(new THREE.Vector2(0, 0)); },
     throwOne() { return tryThrow(); },

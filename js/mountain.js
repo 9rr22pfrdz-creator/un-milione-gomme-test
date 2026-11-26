@@ -8,8 +8,9 @@ export const CELL = 1.0;           // m
 export const CENTER = { x: -42, z: -4 }; // world position of the mountain centre
 export const ORIGIN = { x: CENTER.x - N * CELL / 2, z: CENTER.z - N * CELL / 2 };
 export const MAX_SLOPE = 0.9;      // rise per metre before tires slide down (~42°)
-export const GRAB_LAYERS = 2;      // top 2 tires of a cell can be grabbed
-export const SHOW_BURIED = 4;      // then 4 more are visible but buried: a dense jumble with no bald patches
+export const GRAB_LAYERS = 4;      // v1.0.1: the top 4 tires of a cell can always be pulled out (up to 3 resting on top: a bit buried is fine)
+export const EDGE_LAYERS = 5;      // the 5th one too, when its side is open (on a flank / next to a lower stack)
+export const SHOW_BURIED = 2;      // then 2 more are visible but truly buried ("proprio sotto sotto"): 6 visible layers, as before
 export const SLIDE_RATIO = 1.5;    // in play a hole must be this much deeper than MAX_SLOPE before a landslide
 const GOLD_Z = 3.4;
 
@@ -55,9 +56,9 @@ export class Mountain {
     this.count[top] += TOTAL_TIRES - tot;
     this.relaxAll();
     this.initial = Int32Array.from(this.count);
-    // plant the gold tire at the foot of the mountain facing the yard, third from the top (visible, buried)
+    // plant the gold tire at the foot of the mountain facing the yard, sixth from the top (visible, truly buried: dig for it)
     const c = this.findFootCell();
-    this.gold = { cell: c, index: this.count[c] - 3, taken: false };
+    this.gold = { cell: c, index: this.count[c] - 6, taken: false };
     this.dirty.clear();
   }
   findFootCell() { // a low front cell (about knee to waist high) facing the yard
@@ -79,8 +80,18 @@ export class Mountain {
     const t = tireTypeFrom(hash2(c, index * 3.17), hash2(index + 0.5, c * 1.31));
     return t; // golds are scattered through the whole pile (plus the planted one at the foot)
   }
-  // can the tire at (c, index) be grabbed? (only the top GRAB_LAYERS)
-  isFree(c, index) { const n = this.count[c]; return index < n && index >= n - GRAB_LAYERS; }
+  // can the tire at (c, index) be grabbed? Permissive: anything with at most 3 tires on top comes out;
+  // with 4 on top only if its side is exposed (a neighbour stack lower than it); deeper = pinned under a solid layer.
+  isFree(c, index) {
+    const n = this.count[c]; if (index < 0 || index >= n) return false;
+    const depth = n - 1 - index; if (depth < GRAB_LAYERS) return true;
+    return depth < EDGE_LAYERS && this.sideOpen(c, index);
+  }
+  sideOpen(c, index) {
+    const i = c % N, j = (c / N) | 0;
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= N || b >= N || this.count[b * N + a] <= index) return true; }
+    return false;
+  }
   isVisible(c, index) { const n = this.count[c]; return index < n && index >= n - GRAB_LAYERS - SHOW_BURIED; }
   // remove a specific tire. Tires above it don't exist (it is in the top layers), so we swap identities:
   // the stack loses one, and if a lower-but-free tire was taken, the top one takes its place.
