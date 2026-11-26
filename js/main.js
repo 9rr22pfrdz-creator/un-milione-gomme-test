@@ -1153,7 +1153,9 @@ function closeShop() { shopOpen = false; $('shop').classList.add('hidden'); lock
 
 /* ---------------- actions ---------------- */
 const ray = new THREE.Raycaster();
-let hover = null, grabBusy = 0, throwCD = 0, actionHeld = false, lastAimNDC = new THREE.Vector2(0, 0);
+let hadLock = false; // the player already had the mouse captured once this session
+const HOLD_DELAY = 0.35; // s the button must stay down before it starts repeating
+let hover = null, grabBusy = 0, throwCD = 0, actionHeld = false, holdT = 0, lastAimNDC = new THREE.Vector2(0, 0);
 function pickAt(ndc) {
   camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera);
   const o = ray.ray.origin, d = ray.ray.direction; let best = null, bt = 1e9;
@@ -1458,7 +1460,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyK') { e.preventDefault(); openContracts(); return; }
   if (e.code === 'KeyC') { e.preventDefault(); if (buildUnlocked()) enterBuild(); else toast('Prima sblocca i nastri trasportatori nel negozio'); }
   if (e.code === 'KeyB' || e.code === 'Tab') { e.preventDefault(); shopOpen ? closeShop() : openShop(); }
-  if (e.code === 'KeyE' || e.code === 'Space') { e.preventDefault(); actionHeld = true; doAction(); }
+  if (e.code === 'KeyE' || e.code === 'Space') { e.preventDefault(); if (e.repeat) return; actionHeld = true; holdT = 0; doAction(); } // one press = one action (key auto-repeat ignored)
   if (e.code === 'KeyQ') { e.preventDefault(); if (holding()) parkCart(); else if (cartDist() < 3.1) pickCart(); }
   if (e.code === 'KeyM') { sfx.muted = !sfx.muted; sfx.setVolume(S.settings.volume); toast(sfx.muted ? 'Audio spento' : 'Audio acceso'); }
 });
@@ -1466,9 +1468,11 @@ addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyE' || 
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; actionHeld = false; });
 canvas.addEventListener('mousedown', e => {
   if (isTouch || !playing) return;
-  if (!document.pointerLockElement) { lockPointer(); return; }
+  // v1.0.4: if the pointer lock was lost mid-game (Esc, a Safari hiccup), the click re-locks AND still counts: no swallowed click
+  if (!document.pointerLockElement) { const wasPlaying = hadLock; lockPointer(); if (!wasPlaying || build.on || shopOpen || ctOpen || e.button !== 0) return; }
+  hadLock = true;
   if (build.on) { if (e.button === 0) placePiece(); else if (e.button === 2) dismantle(); return; }
-  if (e.button === 0) { actionHeld = true; doAction(); }
+  if (e.button === 0) { actionHeld = true; holdT = 0; doAction(); } // one click = exactly one grab / throw
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mouseup', () => { actionHeld = false; });
@@ -1512,12 +1516,12 @@ const endTouch = e => {
 };
 canvas.addEventListener('touchend', endTouch); canvas.addEventListener('touchcancel', endTouch);
 const throwBtn = $('throwbtn');
-throwBtn.addEventListener('touchstart', e => { e.preventDefault(); actionHeld = true; if (!tryThrow() && !tryStore() && !tryFeedCutter()) tryShred(); });
+throwBtn.addEventListener('touchstart', e => { e.preventDefault(); actionHeld = true; holdT = 0; if (!tryThrow() && !tryStore() && !tryFeedCutter()) tryShred(); });
 const fascBtn = $('fascbtn');
 fascBtn.addEventListener('touchstart', e => { e.preventDefault(); tryNest(); });
 fascBtn.addEventListener('mousedown', e => { e.preventDefault(); tryNest(); });
 throwBtn.addEventListener('touchend', e => { e.preventDefault(); actionHeld = false; });
-throwBtn.addEventListener('mousedown', () => { actionHeld = true; tryThrow(); });
+throwBtn.addEventListener('mousedown', () => { actionHeld = true; holdT = 0; tryThrow(); });
 
 /* ---------------- menus ---------------- */
 let settingsOpen = false;
@@ -1665,12 +1669,15 @@ function step(dt) {
   zoneMat.opacity = carriedNow() ? (inThrowZone() ? 1 : 0.75 + Math.sin(performance.now() / 260) * 0.25) : 0.45;
   $('zonehint').classList.toggle('hidden', !(playing && carriedNow() && nearVanButOut()));
   // held button = keep working (throw cadence / grab the next tire under the crosshair)
-  if (actionHeld && playing && !shopOpen && !build.on && !ctOpen) {
+  // v1.0.4: holding the button only auto-repeats after a real hold (HOLD_DELAY), and never at max Mani rapide:
+  // there every single click is one instant grab / throw, so a normal click (a few frames down) can't fire twice
+  if (actionHeld) holdT += dt;
+  if (actionHeld && holdT >= HOLD_DELAY && C.throwGap(S.lv.grip) > 0 && playing && !shopOpen && !build.on && !ctOpen) {
     if (inThrowZone() && carriedNow() && throwCD <= 0) tryThrow();
     else if (inRackZone() && carriedNow() && throwCD <= 0) tryStore();
     else if (inCutZone() && carriedNow() && throwCD <= 0) tryFeedCutter();
     else if (carriedNow() && throwCD <= 0 && shredders.list.length && nearShredder()) tryShred();
-    else if (!isTouch && grabBusy <= 0) { const r = pickAt(lastAimNDC); if (r && r.free && r._t <= C.PLAYER.reach && carried() < capacity()) tryGrab(r); }
+    else if (!isTouch && grabBusy <= 0 && st.grab > 0) { const r = pickAt(lastAimNDC); if (r && r.free && r._t <= C.PLAYER.reach && carried() < capacity()) tryGrab(r); }
   }
   // workers watch you
   workerT += dt;
@@ -1741,7 +1748,7 @@ if (TEST) {
     // v8
     pulleys, shredders, fasc, fq, F5, FBAY, CUT_ZONE, TABLE_ZONE, dropDest, shredFeed, cutterFeed, cutterRoom, tryNest, tryFeedCutter, tryShred, nearShredder, inCutZone, inTableZone, syncPulleys, footprintOf,
     // v1.0
-    drones, spiders, ending, DPAD, PAD_BOX, SPIDER, syncDrones, syncSpiders, syncArms, payMul, tireVal, bayAccept, get bayIn() { return V.bayIn; }, get dustN() { return dusts.length; }, get grabBusy() { return grabBusy; }, sfx, get throwCD() { return throwCD; }, tryThrow, flightsOf: k => flights.filter(f => f.kind === k).length, renderShop, beginFinale, haltAll, setRemaining, dronePick, droneDest, endStats, get halted() { return halted; },
+    drones, spiders, ending, DPAD, PAD_BOX, SPIDER, syncDrones, syncSpiders, syncArms, payMul, tireVal, bayAccept, get bayIn() { return V.bayIn; }, get dustN() { return dusts.length; }, get grabBusy() { return grabBusy; }, sfx, get throwCD() { return throwCD; }, press(ms) { actionHeld = true; holdT = 0; doAction(new THREE.Vector2(0, 0)); const n = Math.round(ms / 50); for (let i = 0; i < n; i++) step(0.05); actionHeld = false; }, tryThrow, flightsOf: k => flights.filter(f => f.kind === k).length, renderShop, beginFinale, haltAll, setRemaining, dronePick, droneDest, endStats, get halted() { return halted; },
     stepMs(n = 60) { const t0 = performance.now(); for (let i = 0; i < n; i++) step(1 / 60); return (performance.now() - t0) / n; },
     get ctOpen() { return ctOpen; }, get FL() { return FL; }, setVehicleNow(t) { setVehicle(t); evictPieces(); updateHUD(); },
     clearBanners() { bannerQ.length = 0; bannerT = 0; $('banner').classList.remove('show'); toastT = 0; $('toast').classList.remove('show'); },

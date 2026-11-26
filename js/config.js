@@ -3,7 +3,7 @@
 // Costs in COSTS were calibrated with `node sim/economy.js --tune` and then frozen here.
 import { braidLayout } from './braid.js';
 
-export const VERSION = '1.0.3';
+export const VERSION = '1.0.4';
 export const TOTAL_TIRES = 1000000;
 
 /* ---------- tires ---------- */

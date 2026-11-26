@@ -47,20 +47,23 @@ export class Sfx {
     this.tone(o, t + 0.02, 520 * k * this.rnd(0.9, 1.1), 780 * k, 0.09, 'sine', 0.12);
     this.tone(o, t, 95 * k, 70 * k, 0.16, 'sine', 0.35);
   }
-  // v1.0.3: tire lands in the van: one dry, crisp "din" (no second note, no long ring): a short metallic strike
-  // at ~E6 with a couple of inharmonic partials, all gone in ~0.1 s. Combos nudge the pitch up a step;
-  // gold gets a brighter, double-overtone "din" so it still pops.
+  // v1.0.4: tire lands in the van: a bold, dry arcade bell "DIN!" (Super Mario coin style): square + triangle at E6 with a
+  // 12 ms flick up from B5 on the attack, a bright bell partial and a hard metallic click; tight decay ~0.12 s, no second note.
+  // Combos lift the pitch a little; gold is brighter (extra octave + fifth overtones) and a touch longer.
   // soft = an automatic delivery (helpers, belts): quieter, no combo climb
   clink(size = 1, height = 0, pan = 0, gold = false, soft = 0) {
-    if (!this.ok()) return; const t = this.t, o = this.out(pan, soft ? 0.85 * soft : 0.85);
+    if (!this.ok()) return; const t = this.t, o = this.out(pan, soft ? 1.0 * soft : 1.0);
     const now = t; let combo = 0;
     if (!soft) { this._combo = (now - (this._lastBling || -9) < 1.2) ? Math.min(6, (this._combo || 0) + 1) : 0; this._lastBling = now; combo = this._combo; }
-    const up = Math.pow(2, (combo * 0.5 + (gold ? 2 : 0) + height * 1.0 + (soft ? (Math.random() * 2 - 1) : 0)) / 12) * this.rnd(0.995, 1.005);
-    const f = 1318.5 * up, D = gold ? 0.11 : 0.085; // E6, very short
-    this.tone(o, t, f, f * 0.995, D, 'sine', gold ? 0.3 : 0.27, 0.0008);           // the "din"
-    this.tone(o, t, f * 2.76, f * 2.74, D * 0.45, 'sine', gold ? 0.1 : 0.07, 0.0005); // metallic partial, gone almost at once
-    if (gold) { this.tone(o, t, f * 2.0, f * 2.0, D * 0.8, 'sine', 0.12, 0.0006); this.tone(o, t, f * 3.0, f * 3.0, D * 0.55, 'sine', 0.06, 0.0005); } // brighter double overtone
-    this.noise(o, t, 0.008, 'highpass', 6500, 6500, 0.7, 0.14); // dry tick on the attack
+    const up = Math.pow(2, (combo * 0.5 + (gold ? 2 : 0) + height * 1.0 + (soft ? (Math.random() * 2 - 1) : 0)) / 12) * this.rnd(0.997, 1.003);
+    const f = 1318.5 * up, D = gold ? 0.15 : 0.12; // E6
+    const flick = (type, peak, dur, mul = 1) => { const os = this.tone(o, t, 987.8 * up * mul, 987.8 * up * mul, dur, type, peak, 0.0005); os.frequency.setValueAtTime(987.8 * up * mul, t); os.frequency.setValueAtTime(f * mul, t + 0.012); return os; };
+    flick('square', gold ? 0.2 : 0.17, D);          // the coin body: B5 -> E6 in 12 ms, square = arcade bite
+    flick('triangle', gold ? 0.42 : 0.38, D * 1.05); // round, loud fundamental
+    this.tone(o, t, f * 2, f * 2, D * 0.5, 'sine', gold ? 0.16 : 0.1, 0.0005);   // bright bell partial
+    this.tone(o, t, f * 2.76, f * 2.76, D * 0.25, 'sine', 0.06, 0.0005);         // metallic inharmonic glint, gone at once
+    if (gold) { this.tone(o, t, f * 3, f * 3, D * 0.45, 'sine', 0.1, 0.0005); this.tone(o, t, f * 4, f * 4, D * 0.3, 'triangle', 0.07, 0.0005); }
+    this.noise(o, t, 0.006, 'highpass', 7000, 7000, 0.7, 0.22); // hard dry click on the attack
     // light rubber thump underneath, short and low so the din stays dry
     const k = (1 - size * 0.1) * this.rnd(0.94, 1.06);
     this.tone(o, t, 140 * k, 85 * k, 0.09, 'sine', 0.2);
