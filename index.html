@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Un Milione">
+<meta name="theme-color" content="#16202a">
+<title>Un Milione di Gomme</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="pops"></div>
+<div id="hud" class="hidden">
+  <div class="top">
+    <div class="box"><div class="lbl">SOLDI</div><div id="money" class="big">€ 0,00</div></div>
+    <div class="box mid"><div class="lbl">GOMME NELLA MONTAGNA</div><div id="left" class="big">1.000.000</div><div class="bar"><i id="leftbar"></i></div><div class="sub">smaltite: <b id="cleared">0</b></div></div>
+    <div class="box r"><div class="lbl">FURGONE</div><div id="vfill" class="big">0/64</div><div class="bar v"><i id="vbar"></i></div></div>
+  </div>
+  <div class="carry"><div class="chip">✋ In mano <b id="hands">0/1</b></div><div id="cartchip" class="chip hidden">🛒 Carrello <b id="cartn">0/4</b></div></div>
+  <div id="hint" class="hint hidden"></div>
+  <div id="cross"></div><div id="aimlabel"></div>
+  <button id="setbtn" class="round" aria-label="Impostazioni">⚙️</button>
+  <button id="shopbtn" class="shop">🛒<span>NEGOZIO <kbd>B</kbd></span></button>
+  <button id="throwbtn" class="throwbtn hidden">LANCIA</button>
+</div>
+<div id="joy"><div id="knob"></div></div>
+<div id="banner"></div>
+<div id="toast"></div>
+
+<div id="title" class="screen">
+  <div class="logo"><span>UN MILIONE</span><b>di GOMME</b></div>
+  <div class="tag">Un milione di gomme usate da smaltire. Una alla volta, con calma.</div>
+  <button id="play" class="cta">GIOCA</button>
+  <div class="help desk">
+    <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> cammini · <b>mouse</b> ti guardi intorno</p>
+    <p><b>clic</b> su una gomma per prenderla · <b>clic</b> dietro al furgone per lanciarla dentro (tieni premuto per continuare)</p>
+    <p><kbd>B</kbd> negozio · <kbd>Esc</kbd> pausa · <kbd>M</kbd> audio</p>
+  </div>
+  <div class="help tch">
+    <p>👈 Pollice sinistro: cammina · 👉 trascina: guardati intorno</p>
+    <p>Tocca una gomma per prenderla · dietro al furgone tocca o premi LANCIA</p>
+  </div>
+  <div class="ver">versione di prova 0.1 · prima fetta giocabile</div>
+</div>
+
+<div id="pause" class="screen hidden dim">
+  <div class="logo small"><span>IN PAUSA</span></div>
+  <button id="resume" class="cta">CONTINUA</button>
+  <button id="pausesettings" class="ghost">Impostazioni</button>
+  <p class="note">Il gioco si salva da solo.</p>
+</div>
+
+<div id="shop" class="modal hidden"><div class="panel">
+  <div class="phead"><b>🛒 Negozio</b><span id="shopmoney">€ 0</span><button id="shopclose" class="x">✕</button></div>
+  <div id="shoplist" class="scroll"></div>
+</div></div>
+
+<div id="settings" class="modal hidden"><div class="panel small">
+  <div class="phead"><b>⚙️ Impostazioni</b><button id="setclose" class="x">✕</button></div>
+  <label class="row">Volume <input id="vol" type="range" min="0" max="1" step="0.05"></label>
+  <label class="row">Sensibilità <input id="sens" type="range" min="0.3" max="2.5" step="0.05"></label>
+  <label class="row">Inverti asse verticale <input id="inv" type="checkbox"></label>
+  <label class="row">Grafica <select id="qual"><option value="auto">Automatica</option><option value="alta">Alta</option><option value="bassa">Bassa (PC vecchi)</option></select></label>
+  <button id="newgame" class="wide danger">Nuova partita</button>
+  <div id="confirmnew" class="confirm hidden"><p>Sicuro? Cancelli tutti i progressi e ricominci da un milione di gomme.</p><button id="newyes" class="wide danger">Sì, cancella tutto</button><button id="newno" class="wide">No, torna indietro</button></div>
+  <p class="note">Il gioco si salva da solo ogni pochi secondi. Mentre è chiuso non succede niente: nessun progresso offline.</p>
+</div></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
