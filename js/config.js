@@ -75,8 +75,9 @@ export const UPGRADES = [
   { id: 'belt', phase: 4, icon: '➰', machine: true, name: 'Nastri trasportatori', desc: 'Sblocca la costruzione: nastri dritti, curve e il caricatore che pesca dalla montagna. Ogni livello = un caricatore in più.', unit: 'caricatori', lv: [0, 1, 2, 3, 4], rate: 2.0 },
   { id: 'beltSpeed', phase: 4, icon: '⏩', name: 'Motori dei nastri', desc: 'Nastri e caricatori più veloci.', unit: 'x velocità', lv: [1, 1.4, 1.8] },
   // phase 5
-  { id: 'arm', phase: 5, icon: '🦾', machine: true, name: 'Bracci robot', desc: 'Prendono le gomme dalla montagna e le mettono sul nastro.', unit: 'bracci', lv: [0, 1, 2, 3, 4], rate: 5 },
-  { id: 'armSpeed', phase: 5, icon: '⚙️', name: 'Servomotori', desc: 'Bracci più rapidi.', unit: 'x velocità', lv: [1, 1.5] },
+  { id: 'arm', phase: 5, icon: '🦾', machine: true, name: 'Bracci meccanici', desc: 'Bracci idraulici arancioni da piazzare col blueprint ai piedi della montagna: pescano le gomme e le girano sul nastro, nel mezzo o nello stoccaggio. Ogni livello = un braccio in più.', unit: 'bracci', lv: [0, 1, 2, 3, 4], rate: 5 },
+  { id: 'armSpeed', phase: 5, icon: '⚙️', name: 'Servomotori', desc: 'Pompe e servomotori nuovi: i bracci girano e afferrano più svelti.', unit: 'x velocità', lv: [1, 1.5] },
+  { id: 'armGrab', phase: 5, icon: '🗜️', name: 'Pinza multipla', desc: 'Una pinza più lunga: ogni braccio infila più gomme a ogni presa.', unit: 'gomme a presa', lv: [1, 2, 3] },
   // phase 6
   { id: 'pulley', phase: 6, icon: '🧲', machine: true, name: 'Carrucola col magnete', desc: 'Una gru a carrucola che solleva grappoli di gomme col magnete.', unit: 'carrucole', lv: [0, 1, 2, 3], rate: 10 },
   { id: 'magnet', phase: 6, icon: '🔋', name: 'Magnete potenziato', desc: 'Più gomme a ogni presa.', unit: 'x presa', lv: [1, 1.4, 1.8] },
@@ -86,7 +87,7 @@ export const UPGRADES = [
   { id: 'spider', phase: 7, icon: '🕷️', machine: true, name: 'Braccio ragno', desc: 'Il gigante finale: otto braccia che svuotano la montagna.', unit: '', lv: [0, 1], rate: 26 },
   { id: 'spiderBoost', phase: 7, icon: '🔥', name: 'Ragno turbo', desc: 'Il ragno va al doppio.', unit: 'x velocità', lv: [1, 1.6] },
   // vehicles + loading bays
-  { id: 'vehicle', phase: 3, icon: '🚚', machine: true, name: 'Furgone grande', desc: 'Cassone più lungo e più alto: più gomme a viaggio e un bonus di consegna più grosso.', unit: '', lv: [0, 1, 2, 3] },
+  { id: 'vehicle', phase: 3, icon: '🚚', machine: true, name: 'Mezzi più grandi', desc: 'Furgone grande, poi il camion e infine il bilico: più gomme a viaggio e un bonus di consegna più grosso.', unit: '', lv: [0, 1, 2, 3] },
   { id: 'bays', phase: 4, icon: '🅿️', name: 'Piazzole di carico', desc: 'Un altro mezzo si carica mentre il primo è via.', unit: 'piazzole', lv: [1, 2, 3, 4] },
 ];
 export const UPG = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
@@ -106,6 +107,9 @@ export const PLAN = [
 
 // COSTS: frozen output of `node sim/economy.js --tune` (rounded). One array per upgrade, per level.
 export const COSTS = {"shoes":[15,60,120],"gloves":[20],"grip":[40,55,200],"cart":[85,160,220,280],"helper":[220,400,600,1200,200000],"helperCart":[750],"vehicle":[550,8000,45000],"belt":[1600,2200,4000,4500],"bays":[2800,25000,150000],"beltSpeed":[3500,12000],"arm":[6000,10000,14000,22000],"armSpeed":[16000],"pulley":[18000,30000,60000],"magnet":[28000,40000],"drones":[35000,45000,70000,160000],"droneSpeed":[60000],"spider":[75000],"spiderBoost":[180000]};
+
+// extras outside the simulated plan (bonus upgrades, not needed to finish in 5-6 h)
+COSTS.armGrab = [12000, 26000];
 
 export function costOf(id, level) { const c = COSTS[id]; return c && level < c.length ? c[level] : null; }
 export function maxLevel(id) { return UPG[id].lv.length - 1; }

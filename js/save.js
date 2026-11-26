@@ -1,11 +1,13 @@
 // Save/load with a stable key + backup. Pure: storage is injected (localStorage in the browser).
 // No offline progress: nothing is ever computed from the time spent away.
 import { defaultLevels, UPGRADES, maxLevel, stats } from './config.js';
+import { defaultContracts, normalizeContracts } from './contracts.js';
 
 export const SAVE_KEY = 'umdg-save';
 export const BACKUP_KEY = 'umdg-save-bak';
 export const SAVE_VERSION = 1;
 export const BELT_TYPES = ['straight', 'curveR', 'curveL', 'intake'];
+export const STORAGE_CAP = 40; // per rack bay
 
 export function defaultState() {
   return {
@@ -21,6 +23,9 @@ export function defaultState() {
     van: { fill: [], trips: 0 }, // fill: per slot [type] or [3,3] for two scooter tires
     vehicle: 0,               // tier of the vehicle at the bay (the upgrade lv.vehicle swaps it in on the next trip)
     belts: [],                // placed conveyor pieces [{type, gx, gz, rot}] (helpers = lv.helper / lv.helperCart)
+    arms: [],                 // v7: placed robotic arms [{gx, gz, rot}] (how many = lv.arm; speed / grab = lv.armSpeed / lv.armGrab)
+    storage: [0, 0, 0, 0],    // v7: tires in the rack bays 14" / 16" / 18" / Scooter
+    contracts: defaultContracts(), // v7: {list, active, done, seq, earned}
     player: { x: 3, z: 0.5, yaw: Math.PI / 2, pitch: -0.12 },
     stats: { cleared: 0, earned: 0, thrown: 0, auto: 0, vans: 0, gold: 0, playTime: 0, bySize: [0, 0, 0, 0, 0] },
     milestones: 0,            // how many MILESTONES already celebrated
@@ -68,6 +73,18 @@ export function normalize(raw) {
       if (s.belts.length >= 400) break;
     }
   }
+  // v7: arms (integer cells, one per cell, never more than bought), rack, contracts board
+  if (Array.isArray(raw.arms)) {
+    const seen = new Set(s.belts.map(b => b.gx + ',' + b.gz)), max = [0, 1, 2, 3, 4][s.lv.arm] || 0;
+    for (const a of raw.arms) {
+      if (s.arms.length >= max) break;
+      if (!isObj(a) || !Number.isInteger(a.gx) || !Number.isInteger(a.gz) || Math.abs(a.gx) > 200 || Math.abs(a.gz) > 200) continue;
+      const k = a.gx + ',' + a.gz; if (seen.has(k)) continue; seen.add(k);
+      s.arms.push({ gx: a.gx, gz: a.gz, rot: Number.isInteger(a.rot) ? ((a.rot % 4) + 4) % 4 : 0 });
+    }
+  }
+  if (Array.isArray(raw.storage)) s.storage = [0, 1, 2, 3].map(i => Math.max(0, Math.min(STORAGE_CAP, num(raw.storage[i], 0) | 0)));
+  s.contracts = normalizeContracts(raw.contracts);
   if (isObj(raw.player)) for (const k of ['x', 'z', 'yaw', 'pitch']) s.player[k] = num(raw.player[k], d.player[k]);
   if (isObj(raw.stats)) {
     for (const k of Object.keys(d.stats)) if (k !== 'bySize') s.stats[k] = Math.max(0, num(raw.stats[k], 0));

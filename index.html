@@ -25,6 +25,7 @@
     <div class="sub">smaltite: <b id="cleared">0</b><span class="lbar"><i id="leftbar"></i></span></div>
     <div class="van"><span class="vl" id="vname">FURGONE</span><span class="bar v"><i id="vbar"></i></span><b id="vfill">0/64</b></div>
   </div>
+  <div id="pinned" class="pinned hidden"><i class="tack"></i><small>CONTRATTO IN CORSO</small><b id="pintitle"></b><span id="pinsub"></span><div class="pbar"><i id="pinbar"></i></div><div class="prow"><span id="pinnum">0 / 0</span><span id="pinreward"></span></div><span class="pnodl">Nessuna scadenza · K per la bacheca</span></div>
   <button id="setbtn" class="round" aria-label="Impostazioni"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M19.4 13a7.7 7.7 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.3 7.3 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.7 7.7 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
   <div id="hint" class="hint hidden"></div>
   <div id="cross"></div><div id="aimlabel"></div>
@@ -35,6 +36,7 @@
     <button id="parkbtn" class="slot act hidden"><kbd class="k">Q</kbd><span>Posa carrello</span></button>
     <button id="pickbtn" class="slot act hidden"><kbd class="k">E</kbd><span>Prendi carrello</span></button>
     <button id="buildbtn" class="slot act build hidden"><kbd class="k">C</kbd><span class="ico">🛠️</span><span>Costruisci</span></button>
+    <button id="ctbtn" class="slot act ctr hidden"><kbd class="k">K</kbd><span class="ico">📋</span><span>Contratti</span></button>
     <button id="shopbtn" class="slot shop"><kbd class="k">B</kbd><span class="ico">🏪</span><span>NEGOZIO</span></button>
   </div>
   <button id="throwbtn" class="throwbtn hidden">LANCIA</button>
@@ -61,13 +63,13 @@
   <div class="help desk">
     <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> cammini · <b>mouse</b> ti guardi intorno</p>
     <p><b>clic</b> su una gomma per prenderla · <b>clic</b> dietro al furgone per lanciarla dentro (tieni premuto per continuare)</p>
-    <p><kbd>B</kbd> negozio · <kbd>C</kbd> costruisci (fase 3) · <kbd>Esc</kbd> pausa · <kbd>M</kbd> audio</p>
+    <p><kbd>B</kbd> negozio · <kbd>C</kbd> costruisci · <kbd>K</kbd> contratti · <kbd>Esc</kbd> pausa · <kbd>M</kbd> audio</p>
   </div>
   <div class="help tch">
     <p>👈 Pollice sinistro: cammina · 👉 trascina: guardati intorno</p>
     <p>Tocca una gomma per prenderla · dietro al furgone tocca o premi LANCIA</p>
   </div>
-  <div class="ver">versione di prova 0.6 · fase 3: aiutanti e nastri</div>
+  <div class="ver">versione di prova 0.7 · fase 4: bracci meccanici, camion e contratti</div>
 </div>
 
 <div id="pause" class="screen hidden dim">
@@ -80,6 +82,12 @@
 <div id="shop" class="modal hidden"><div class="panel">
   <div class="phead"><b>🏪 Negozio</b><span id="shopmoney">€ 0</span><button id="shopclose" class="x">✕</button></div>
   <div id="shoplist" class="scroll"></div>
+</div></div>
+
+<div id="contracts" class="modal hidden"><div class="panel cork">
+  <div class="phead"><b>📋 Bacheca contratti</b><span id="ctdone"></span><button id="ctclose" class="x">✕</button></div>
+  <div id="ctlist" class="ctlist scroll"></div>
+  <p class="ctfoot">Ogni gomma della misura giusta che carichi nel mezzo o metti nello scaffale conta: a mano, col carrello, con gli aiutanti, i nastri e i bracci. Un contratto alla volta, puoi cambiarlo quando vuoi senza perdere niente.</p>
 </div></div>
 
 <div id="settings" class="modal hidden"><div class="panel small">

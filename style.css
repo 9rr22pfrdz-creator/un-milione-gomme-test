@@ -131,3 +131,45 @@ body.touch .bk{padding:10px 14px;font-size:14px}body.touch .piece{padding:9px 4p
 #binfo{text-align:center;font-size:12px;min-height:16px;margin-top:4px;opacity:.9}#binfo.bad{color:#ff9a8f}#binfo.ok{color:#9dffb4}#binfo.far{color:#ffc58a}
 body:not(.touch) #binfo{display:none}
 .req.soon{color:#9fd0ff}
+
+/* ---------- v7: contracts board, pinned contract card, arms in the build bar ---------- */
+.slot.ctr{color:#ffd99a}
+.pinned{position:absolute;top:170px;right:18px;width:236px;padding:16px 15px 12px;background:linear-gradient(180deg,#f7eed8,#eadcb8);color:#2a2420;border-radius:3px;box-shadow:0 10px 24px rgba(0,0,0,.45),inset 0 0 0 1px rgba(120,90,40,.25);transform:rotate(1.4deg);pointer-events:auto;cursor:pointer;display:flex;flex-direction:column;gap:3px;font-family:inherit;transition:transform .2s}
+.pinned:hover{transform:rotate(0deg) scale(1.02)}
+.pinned::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 22px,rgba(90,120,170,.09) 22px 23px);pointer-events:none;border-radius:3px}
+.pinned .tack{position:absolute;top:-9px;left:50%;width:20px;height:20px;margin-left:-10px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff8a7a,#d0302b 55%,#7a1410);box-shadow:0 4px 6px rgba(0,0,0,.45)}
+.pinned small{font-size:10px;letter-spacing:.12em;font-weight:800;color:#a3221b}
+.pinned b{font-size:17px;line-height:1.1}
+.pinned #pinsub{font-size:13px;font-weight:700;color:#4a3f35}
+.pinned .pbar{height:9px;background:#d8c9a6;border-radius:5px;overflow:hidden;margin-top:5px}
+.pinned .pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#d0402b,#f06a3a);border-radius:5px;transition:width .25s}
+.pinned .prow{display:flex;justify-content:space-between;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.pinned #pinreward{color:#1f7a3a}
+.pinned .pnodl{font-size:10.5px;color:#7a6a58}
+.pinned.done{background:linear-gradient(180deg,#e6f6d9,#cfe9b8);animation:pinpop .5s ease}
+.pinned.done .pbar i{background:linear-gradient(90deg,#2e9a4a,#5fd07a)}
+.pinned.done small{color:#1f7a3a}
+@keyframes pinpop{0%{transform:rotate(1.4deg) scale(1)}40%{transform:rotate(-1deg) scale(1.08)}100%{transform:rotate(1.4deg) scale(1)}}
+body.touch .pinned{top:150px;width:200px;padding:13px 12px 10px}
+@media (max-width:820px){.pinned{top:150px;width:196px}.pinned b{font-size:15px}}
+.panel.cork{width:min(860px,96vw);background:#2a2018 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 .55 0 0 0 0 .38 0 0 0 0 .2 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23n)'/%3E%3C/svg%3E");border:6px solid #5a3d22;border-radius:8px}
+.panel.cork .phead{background:#1e2226;color:#f2c21a}
+.panel.cork #ctdone{font-size:12.5px;color:#d8c9a6;font-weight:600;margin-left:auto;margin-right:12px}
+.ctlist{display:grid;grid-template-columns:repeat(2,1fr);gap:22px;padding:26px 22px 14px}
+.note{position:relative;background:#f6efdf;color:#2a2420;padding:20px 16px 14px;border-radius:2px;box-shadow:0 8px 16px rgba(0,0,0,.45);transform:rotate(var(--r,0deg));display:flex;flex-direction:column;gap:4px}
+.note.on{background:#fff6c8;outline:4px solid #d0402b}
+.note .pin{position:absolute;top:-8px;left:50%;width:18px;height:18px;margin-left:-9px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff8a7a,#d0302b 55%,#7a1410);box-shadow:0 3px 5px rgba(0,0,0,.4)}
+.note b{font-size:18px}
+.note .what{font-size:15px;font-weight:800}
+.note .nt{font-size:12.5px;color:#6a5d50;font-style:italic}
+.note .rw{font-size:22px;font-weight:900;color:#1f7a3a}
+.note .nodl{font-size:11.5px;color:#7a6a58;font-weight:700}
+.note .pb{height:8px;background:#ddd2bd;border-radius:4px;overflow:hidden}.note .pb i{display:block;height:100%;background:#d0402b}
+.note .pg{font-size:12px;font-weight:800}
+.note .acc{margin-top:6px;align-self:flex-start;padding:9px 16px;border:0;border-radius:6px;background:#2556a8;color:#fff;font:inherit;font-weight:800;font-size:14px;cursor:pointer}
+.note.on .acc{background:#7a6a58}
+.note .acc:hover{filter:brightness(1.1)}
+.ctfoot{margin:0;padding:6px 22px 18px;font-size:12.5px;color:#e8dcc2}
+@media (max-width:640px){.ctlist{grid-template-columns:1fr}}
+.piece.armp .pi svg{filter:drop-shadow(0 0 2px rgba(232,106,18,.5))}
+.pop.gold.big{font-size:30px}

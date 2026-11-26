@@ -126,23 +126,25 @@ export class Sfx {
   // van engine, continuous. level 0..1 (idle..revving), gain by distance
   // distance attenuation for the van: full-ish at 3 m, quiet past 20 m
   engAtt(dist) { return 1 / (1 + Math.max(0, dist - 3) * 0.22 + Math.max(0, dist - 3) ** 2 * 0.012); }
-  engineStart(dist = 10) {
-    if (!this.ok()) return; const c = this.ctx, t = this.t, a = this.engAtt(dist);
+  engineStart(dist = 10, deep = 0) {
+    if (!this.ok()) return; const c = this.ctx, t = this.t, a = this.engAtt(dist) * (1 + deep * 0.6), fk = 1 - deep * 0.38;
     // starter motor whirr + catch
     const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter(); o.type = 'sawtooth'; f.type = 'lowpass'; f.frequency.value = 700;
-    o.frequency.setValueAtTime(18, t); for (let i = 0; i < 6; i++) o.frequency.setValueAtTime(i & 1 ? 16 : 24, t + i * 0.09);
-    o.frequency.linearRampToValueAtTime(62, t + 0.75); o.frequency.exponentialRampToValueAtTime(38, t + 1.3);
+    o.frequency.setValueAtTime(18 * fk, t); for (let i = 0; i < 6 + deep * 4; i++) o.frequency.setValueAtTime((i & 1 ? 16 : 24) * fk, t + i * 0.09);
+    o.frequency.linearRampToValueAtTime(62 * fk, t + 0.75 + deep * 0.3); o.frequency.exponentialRampToValueAtTime(38 * fk, t + 1.3 + deep * 0.4);
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.05 * a, t + 0.05); g.gain.linearRampToValueAtTime(0.08 * a, t + 0.7); g.gain.exponentialRampToValueAtTime(0.0008, t + 1.4);
-    o.connect(f); f.connect(g); g.connect(this.bus); o.start(t); o.stop(t + 1.5);
+    o.connect(f); f.connect(g); g.connect(this.bus); o.start(t); o.stop(t + 1.5 + deep * 0.5);
+    if (deep > 0.5) { const o2 = this.out(0, 0.5 * a); this.noise(o2, t + 0.9, 0.9, 'lowpass', 160, 90, 0.7, 0.35, 0.25); this.tone(o2, t + 0.85, 32, 26, 1.0, 'sawtooth', 0.12, 0.2); } // big diesel catching: low rumble burst
   }
-  engineStop(dist = 10) {
-    if (!this.ok()) return; const c = this.ctx, t = this.t, a = this.engAtt(dist);
+  engineStop(dist = 10, deep = 0) {
+    if (!this.ok()) return; const c = this.ctx, t = this.t, a = this.engAtt(dist) * (1 + deep * 0.6);
+    if (deep > 0.3) this.airBrake(dist);
     const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter(); o.type = 'triangle'; f.type = 'lowpass'; f.frequency.value = 240;
-    o.frequency.setValueAtTime(34, t); o.frequency.exponentialRampToValueAtTime(14, t + 0.6);
-    g.gain.setValueAtTime(0.06 * a, t); g.gain.exponentialRampToValueAtTime(0.0006, t + 0.7);
-    o.connect(f); f.connect(g); g.connect(this.bus); o.start(t); o.stop(t + 0.8);
+    o.frequency.setValueAtTime(34 * (1 - deep * 0.35), t); o.frequency.exponentialRampToValueAtTime(14 * (1 - deep * 0.3), t + 0.6 + deep * 0.5);
+    g.gain.setValueAtTime(0.06 * a, t); g.gain.exponentialRampToValueAtTime(0.0006, t + 0.7 + deep * 0.5);
+    o.connect(f); f.connect(g); g.connect(this.bus); o.start(t); o.stop(t + 0.8 + deep * 0.5);
   }
-  setEngine(on, level = 0, dist = 10) {
+  setEngine(on, level = 0, dist = 10, deep = 0) {
     if (!this.ctx) return;
     if (on && !this.engine) {
       // soft diesel hum: triangle + filtered noise, no harsh square/saw
@@ -153,12 +155,20 @@ export class Sfx {
       this.engine = { o1, o2, lp, g, n };
     }
     if (!this.engine) return;
-    const e = this.engine, t = this.ctx.currentTime, base = 30 + level * 26;
+    const e = this.engine, t = this.ctx.currentTime, base = (30 + level * 26) * (1 - deep * 0.4);
     e.o1.frequency.setTargetAtTime(base, t, 0.25); e.o2.frequency.setTargetAtTime(base * 0.5, t, 0.25);
-    e.lp.frequency.setTargetAtTime(150 + level * 200, t, 0.3);
-    const vol = on && !this.muted ? 0.055 * (0.5 + level * 0.6) * this.engAtt(dist) : 0;
+    e.lp.frequency.setTargetAtTime((150 + level * 200) * (1 - deep * 0.3), t, 0.3);
+    const vol = on && !this.muted ? 0.055 * (0.5 + level * 0.6) * this.engAtt(dist) * (1 + deep * 0.7) : 0;
     e.g.gain.setTargetAtTime(vol, t, on ? 0.25 : 0.12);
   }
+  // big truck parking: air brake hiss
+  airBrake(dist = 10) { if (!this.ok()) return; const t = this.t, o = this.out(0.3, 0.6 * this.engAtt(dist)); this.noise(o, t + 0.5, 0.55, 'highpass', 3800, 2400, 0.7, 0.35, 0.01); this.noise(o, t + 0.5, 0.25, 'bandpass', 1800, 900, 1.2, 0.2, 0.01); }
+  // robotic arm: hydraulic servo whine + pump, and the claw clack (grab / release)
+  servo(gain = 1, dur = 0.7) { if (!this.ok() || gain < 0.04) return; const t = this.t, o = this.out(0, 0.22 * gain); this.tone(o, t, 210, 330, dur * 0.55, 'triangle', 0.16, 0.06); this.tone(o, t + dur * 0.5, 330, 240, dur * 0.45, 'triangle', 0.12, 0.02); this.noise(o, t, dur, 'bandpass', 900, 600, 3, 0.07, 0.08); }
+  clack(gain = 1, grab = true) { if (!this.ok() || gain < 0.04) return; const t = this.t, o = this.out(0, 0.55 * gain); this.noise(o, t, 0.04, 'bandpass', grab ? 2400 : 3200, 1500, 2.5, 0.35); this.tone(o, t, grab ? 180 : 240, 90, 0.08, 'sine', 0.35); this.noise(o, t + 0.03, 0.18, 'highpass', 5000, 4000, 0.8, grab ? 0.05 : 0.09, 0.01); }
+  // contract completed: bright chime + little fanfare
+  chime() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.5); [784, 988, 1175, 1568].forEach((f, i) => { this.tone(o, t + i * 0.08, f, f, 0.5, 'triangle', 0.22); this.tone(o, t + i * 0.08, f * 2, f * 2, 0.3, 'sine', 0.05); }); this.tone(o, t + 0.36, 2093, 2093, 0.9, 'sine', 0.12); }
+  paper() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.4); this.noise(o, t, 0.12, 'bandpass', 2600, 4200, 0.8, 0.18, 0.01); this.noise(o, t + 0.1, 0.08, 'bandpass', 3600, 2200, 0.8, 0.12, 0.01); }
   startWind() {
     const c = this.ctx, s = c.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;
     const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420;

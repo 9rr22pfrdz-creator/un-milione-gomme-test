@@ -41,7 +41,13 @@ export function nextPiece(p, map) {
   const e = DIRS[outDir(p)], n = map.get(cellKey(p.gx + e[0], p.gz + e[1]));
   return n && n.type !== 'intake' && n.rot === outDir(p) ? n : null;
 }
-export function isSink(p, rear) { const e = endPoint(p); return Math.hypot(e.x - rear.x, e.z - rear.z) <= SINK_DIST; }
+// a sink is a point {x, z} (the vehicle's rear bay) or a segment {x0, z0, x1, z1} (the storage rack front); `rear` = one or a list
+export function sinkDist(e, k) {
+  if (k.x0 !== undefined) { const dx = k.x1 - k.x0, dz = k.z1 - k.z0, l2 = dx * dx + dz * dz; const t = l2 ? Math.max(0, Math.min(1, ((e.x - k.x0) * dx + (e.z - k.z0) * dz) / l2)) : 0; return Math.hypot(e.x - (k.x0 + dx * t), e.z - (k.z0 + dz * t)); }
+  return Math.hypot(e.x - k.x, e.z - k.z);
+}
+export function sinkIndex(p, rear) { if (!rear) return -1; const e = endPoint(p), L = Array.isArray(rear) ? rear : [rear]; for (let i = 0; i < L.length; i++) if (sinkDist(e, L[i]) <= SINK_DIST) return i; return -1; }
+export function isSink(p, rear) { return sinkIndex(p, rear) >= 0; }
 
 // A conveyor network: pieces + the tires riding on them.
 export class Belts {
@@ -78,6 +84,8 @@ export class Belts {
       }
     }
   }
+  // drop a tire onto p at distance s (a robotic arm): only where there is a free gap
+  insertAt(p, s, tire) { s = Math.max(0, Math.min(p.len, s)); if (p.tires.some(t => Math.abs(t.s - s) < TIRE_GAP)) return false; tire.s = s; p.tires.push(tire); return true; }
   // can a new tire be put at the start of p?
   startFree(p) { return !p.tires.some(t => t.s < TIRE_GAP); }
 }
