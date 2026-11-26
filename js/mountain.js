@@ -9,7 +9,7 @@ export const CENTER = { x: -42, z: -4 }; // world position of the mountain centr
 export const ORIGIN = { x: CENTER.x - N * CELL / 2, z: CENTER.z - N * CELL / 2 };
 export const MAX_SLOPE = 0.9;      // rise per metre before tires slide down (~42°)
 export const GRAB_LAYERS = 2;      // top 2 tires of a cell can be grabbed
-export const SHOW_BURIED = 1;      // then 1 more is visible but buried
+export const SHOW_BURIED = 2;      // then 2 more are visible but buried (fills the gaps)
 export const SLIDE_RATIO = 1.5;    // in play a hole must be this much deeper than MAX_SLOPE before a landslide
 const GOLD_Z = 3.4;
 
@@ -77,7 +77,7 @@ export class Mountain {
   typeAt(c, index) {
     if (this.gold && !this.gold.taken && c === this.gold.cell && index === this.gold.index) return GOLD_ID;
     const t = tireTypeFrom(hash2(c, index * 3.17), hash2(index + 0.5, c * 1.31));
-    return t === GOLD_ID ? 1 : t; // random golds disabled in the slice: the planted one is the show piece
+    return t; // golds are scattered through the whole pile (plus the planted one at the foot)
   }
   // can the tire at (c, index) be grabbed? (only the top GRAB_LAYERS)
   isFree(c, index) { const n = this.count[c]; return index < n && index >= n - GRAB_LAYERS; }

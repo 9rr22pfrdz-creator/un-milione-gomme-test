@@ -6,6 +6,7 @@ import { braidLayout, placeTire } from './braid.js';
 import * as SV from './save.js';
 import { Sfx } from './audio.js';
 import * as G from './gfx.js';
+import { buildWorker } from './workers.js';
 
 const Q = new URLSearchParams(location.search);
 const TEST = Q.has('test');
@@ -26,13 +27,14 @@ let st = C.stats(S.lv);
 const VEH = C.VEHICLES[0]; // the slice uses the van
 const LAYOUT = braidLayout(VEH.cargo);
 const VAN_X = 11.5, VAN_Z = 0.6, VAN_FAR = 58; // rear of the parked van; where it drives to
+const THROW_ZONE = { near: 2.3, far: 4.2, half: 1.15 }; // metres behind the rear opening, half width
 
 /* ---------------- quality ---------------- */
 const autoQ = (isTouch || (navigator.hardwareConcurrency || 4) <= 2) ? 'bassa' : 'alta';
 const QUALITY = S.settings.quality === 'auto' ? autoQ : S.settings.quality;
 const QP = QUALITY === 'alta'
-  ? { pr: Math.min(devicePixelRatio, 1.5), shadow: 2048, near: 11, high: 4.5, far: 2, aa: true, midShadow: true }
-  : { pr: Math.min(devicePixelRatio, 1), shadow: 1024, near: 8, high: 3.2, far: 4, aa: false, midShadow: false };
+  ? { pr: Math.min(devicePixelRatio, 1.5), shadow: 2048, near: 11, high: 4.5, dense: 40, aa: true, midShadow: true }
+  : { pr: Math.min(devicePixelRatio, 1), shadow: 1024, near: 8, high: 3.2, dense: 22, aa: false, midShadow: false };
 
 /* ---------------- renderer / scene ---------------- */
 const canvas = $('c');
@@ -84,6 +86,16 @@ road.rotation.x = -Math.PI / 2; road.position.set(VAN_X + 30, 0.012, VAN_Z); roa
 { const P = []; for (const s of [1, -1]) P.push([G.box(8, 0.01, 0.12), G.M(VAN_X + 3.2, 0.02, VAN_Z + s * 1.45)]); P.push([G.box(0.12, 0.01, 3), G.M(VAN_X - 0.6, 0.02, VAN_Z)]);
   const m = new THREE.Mesh(G.merge(P), mats.yellow); m.receiveShadow = true; scene.add(m); }
 
+const zoneMat = (() => {
+  const [c, x] = G.cvs(256, 192); x.clearRect(0, 0, 256, 192);
+  x.fillStyle = 'rgba(80,230,120,0.22)'; x.fillRect(8, 8, 240, 176);
+  x.strokeStyle = 'rgba(120,255,150,0.95)'; x.lineWidth = 8; x.setLineDash([22, 14]); x.strokeRect(8, 8, 240, 176);
+  x.setLineDash([]); x.fillStyle = 'rgba(200,255,210,0.9)'; x.font = '900 30px Arial Black, Arial'; x.textAlign = 'center'; x.fillText('LANCIA', 128, 82); x.fillText('DA QUI', 128, 124);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+})();
+const zoneMesh = new THREE.Mesh(new THREE.PlaneGeometry(THROW_ZONE.far - THROW_ZONE.near, THROW_ZONE.half * 2), zoneMat);
+zoneMesh.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); zoneMesh.position.set(VAN_X - (THROW_ZONE.near + THROW_ZONE.far) / 2, 0.06, VAN_Z); zoneMesh.renderOrder = 2; scene.add(zoneMesh);
 const colliders = []; // AABBs {x0,x1,z0,z1}
 const FENCE = { x0: -98, x1: 36, z0: -58, z1: 48 };
 function buildYard() {
@@ -153,8 +165,12 @@ function buildYard() {
 buildYard();
 
 /* ---------------- workers (they watch you, unimpressed) ---------------- */
-const workers = [[15.5, -9.4, 0xff7a12], [17.6, -10.2, 0x2f7bd6]].map(([x, z, col], i) => {
-  const w = G.buildWorker(mats, col); w.position.set(x, 0, z); w.rotation.y = -1.2 - i * 0.4; scene.add(w);
+const WORKER_LOOKS = [
+  { name: 'Beppino', suit: 0xe8661a, cap: 0xe8661a, shirt: 0xf1efe8, skin: 0xd7a07a, hair: 0x3a2a1e, mustache: true, beard: false, belly: 1.16, height: 0.97, pose: 'hips' },
+  { name: 'Ottavio', suit: 0x2f62b0, cap: 0x1f2a36, shirt: 0x9a9fa6, skin: 0xc58b62, hair: 0x5c5650, mustache: false, beard: true, belly: 1.0, height: 1.04, pose: 'coffee' },
+];
+const workers = [[15.5, -9.4], [17.6, -10.2]].map(([x, z], i) => {
+  const w = buildWorker(WORKER_LOOKS[i]); w.position.set(x, 0, z); w.rotation.y = -1.2 - i * 0.4; scene.add(w);
   colliders.push({ x0: x - 0.35, x1: x + 0.35, z0: z - 0.35, z1: z + 0.35 });
   return { g: w, shake: 0, next: 8 + i * 9 };
 });
@@ -172,7 +188,7 @@ const mGeo = new THREE.BufferGeometry();
   mGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(NV * NV * 3).fill(1), 3));
   mGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); mGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); mGeo.setIndex(new THREE.BufferAttribute(idx, 1));
 }
-const mountainMesh = new THREE.Mesh(mGeo, new THREE.MeshStandardMaterial({ map: pt.map, bumpMap: pt.bump, bumpScale: 3, roughness: 0.85, color: 0xffffff, vertexColors: true }));
+const mountainMesh = new THREE.Mesh(mGeo, new THREE.MeshStandardMaterial({ map: pt.map, bumpMap: pt.bump, bumpScale: 3, roughness: 0.85, color: 0x9a9a9a, vertexColors: true }));
 mountainMesh.castShadow = true; mountainMesh.receiveShadow = true; scene.add(mountainMesh);
 function cellH(i, j) { return (i < 0 || j < 0 || i >= N || j >= N) ? 0 : mountain.count[j * N + i] * mountain.H_UNIT; }
 function updateCorners(cells) {
@@ -183,7 +199,7 @@ function updateCorners(cells) {
     const i = k % NV, j = (k / NV) | 0;
     const a = cellH(i - 1, j - 1), b = cellH(i, j - 1), c = cellH(i - 1, j), d = cellH(i, j);
     const h = (a + b + c + d) === 0 ? -0.35 : (a + b + c + d) / 4;
-    cornerH[k] = h; pos[k * 3 + 1] = h;
+    cornerH[k] = h; pos[k * 3 + 1] = h > 0 ? h - 0.14 : h;
     // the foot of the pile fades into the dusty gravel so the edge doesn't look cut out
     const f = G.clamp((h + 0.1) / 0.9, 0, 1), col = mGeo.attributes.color.array;
     col[k * 3] = G.lerp(3.6, 1, f); col[k * 3 + 1] = G.lerp(3.4, 1, f); col[k * 3 + 2] = G.lerp(3.0, 1, f);
@@ -202,7 +218,7 @@ const _n = new THREE.Vector3();
 function meshNormal(x, z, out = _n) { const e = 0.35; return out.set(meshH(x - e, z) - meshH(x + e, z), 2 * e, meshH(x, z - e) - meshH(x, z + e)).normalize(); }
 
 const geoHigh = G.tireGeometry(T16, 'high'), geoMid = G.tireGeometry(T16, 'mid'), geoLow = G.tireGeometry(T16, 'low');
-const MAXH = 900, MAXM = 2600, MAXF = 4600;
+const MAXH = 900, MAXM = 3200, MAXF = 9000;
 function inst(geo, mat, max, shadow) {
   const m = new THREE.InstancedMesh(geo, mat, max); m.count = 0; m.castShadow = shadow; m.receiveShadow = true; m.frustumCulled = false;
   m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -210,7 +226,7 @@ function inst(geo, mat, max, shadow) {
 }
 const IM = {
   high: inst(geoHigh, tm.rubber, MAXH, true), mid: inst(geoMid, tm.rubber, MAXM, QP.midShadow), far: inst(geoLow, tm.rubberLow, MAXF, false),
-  ghigh: inst(geoHigh, tm.gold, 8, true), gmid: inst(geoMid, tm.gold, 8, true), gfar: inst(geoLow, tm.gold, 8, false),
+  deep: inst(geoMid, tm.rubber, 900, false), deepL: inst(geoLow, tm.rubber, 1600, false), ghigh: inst(geoHigh, tm.gold, 32, true), gmid: inst(geoMid, tm.gold, 48, true), gfar: inst(geoLow, tm.goldFar, 96, false),
 };
 let nearRecs = [], nearCenter = new THREE.Vector2(1e9, 1e9), farCenter = new THREE.Vector2(1e9, 1e9), nearDirty = true, farDirty = true;
 const _m4 = new THREE.Matrix4(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _sc = new THREE.Vector3(), _col = new THREE.Color();
@@ -219,20 +235,20 @@ const UP = new THREE.Vector3(0, 1, 0), AX = new THREE.Vector3(1, 0, 0);
 function tireXform(c, index, L, type, outPos, outQuat) {
   const h1 = hash2(c, index * 1.7 + 0.3), h2 = hash2(index * 2.3 + 1, c * 0.77), h3 = hash2(c * 1.3 + index, 5.1), h4 = hash2(c + index * 0.31, 9.7);
   const cc = mountain.cellCenter(c), t = C.TIRES[type];
-  const px = cc.x + (h1 - 0.5) * 0.72, pz = cc.z + (h2 - 0.5) * 0.72;
-  const steep = h4 < 0.16 && L < 2, tilt = steep ? 0.9 + h3 * 0.55 : h3 * 0.5;
+  const sp = L >= 2 ? 0.95 : 0.72, px = cc.x + (h1 - 0.5) * sp, pz = cc.z + (h2 - 0.5) * sp;
+  const steep = h4 < 0.27 && L < 2, tilt = steep ? 0.85 + h3 * 0.65 : h3 * 0.6;
   meshNormal(px, pz, _v1);
   _q1.setFromUnitVectors(UP, _v1); _q2.setFromAxisAngle(UP, h1 * 6.283); _q3.setFromAxisAngle(AX, tilt);
   outQuat.copy(_q1).multiply(_q2).multiply(_q3);
-  const lift = L === 0 ? t.w * 0.22 + Math.sin(tilt) * t.R * 0.6 : L === 1 ? -0.035 + Math.sin(tilt) * t.R * 0.45 : -t.R * 0.5;
+  const lift = L === 0 ? t.w * 0.22 + Math.sin(tilt) * t.R * 0.6 : L === 1 ? -0.035 + Math.sin(tilt) * t.R * 0.45 : L === 2 ? -t.R * 0.3 : -t.R * 0.62;
   outPos.set(px, meshH(px, pz) + lift, pz);
   return t;
 }
-function tint(c, index, L, type) { const k = type === C.GOLD_ID ? 1 : (0.82 + hash2(index * 0.13, c * 0.29) * 0.36) * (L === 2 ? 0.7 : 1); return _col.setRGB(k, k * 0.985, k * 0.97); }
-function setInst(m, i, pos, quat, t) { _sc.set(t.R / T16.R, t.w / T16.w, t.R / T16.R); _m4.compose(pos, quat, _sc); m.setMatrixAt(i, _m4); }
+function tint(c, index, L, type) { const k = type === C.GOLD_ID ? 1 : (0.95 + hash2(index * 0.13, c * 0.29) * 0.45) * (L >= 2 ? 0.8 : 1); return _col.setRGB(k, k * 0.985, k * 0.97); }
+function setInst(m, i, pos, quat, t, k = 1) { _sc.set(k * t.R / T16.R, k * t.w / T16.w, k * t.R / T16.R); _m4.compose(pos, quat, _sc); m.setMatrixAt(i, _m4); }
 function rebuildNear() {
   const px = P.x, pz = P.z, R = QP.near, RH = QP.high;
-  nearRecs = []; const cnt = { high: 0, mid: 0, ghigh: 0, gmid: 0 };
+  nearRecs = []; const cnt = { high: 0, mid: 0, deep: 0, deepL: 0, ghigh: 0, gmid: 0 };
   const ci = Math.floor((px - ORIGIN.x) / CELL), cj = Math.floor((pz - ORIGIN.z) / CELL), r = Math.ceil(R / CELL);
   for (let j = Math.max(0, cj - r); j <= Math.min(N - 1, cj + r); j++) for (let i = Math.max(0, ci - r); i <= Math.min(N - 1, ci + r); i++) {
     const c = j * N + i, n = mountain.count[c]; if (!n) continue;
@@ -242,29 +258,32 @@ function rebuildNear() {
       const index = n - 1 - L; if (index < 0) break;
       const type = mountain.typeAt(c, index), pos = new THREE.Vector3(), quat = new THREE.Quaternion();
       const t = tireXform(c, index, L, type, pos, quat);
-      const gold = type === C.GOLD_ID, lod = d < RH ? 'high' : 'mid', key = (gold ? 'g' : '') + lod, m = IM[key];
+      const gold = type === C.GOLD_ID, lod = d < RH ? 'high' : 'mid', key = !gold && L >= 2 ? (d < 6.5 ? 'deep' : 'deepL') : (gold ? 'g' : '') + lod, m = IM[key];
       const id = cnt[key]; if (id >= m.instanceMatrix.count) continue;
       cnt[key]++;
       setInst(m, id, pos, quat, t); m.setColorAt(id, tint(c, index, L, type));
-      nearRecs.push({ c, index, L, type, pos, quat, r: t.R * (L === 2 ? 0.6 : 0.92), free: L < GRAB_LAYERS, m, id, base: _col.clone() });
+      nearRecs.push({ c, index, L, type, pos, quat, r: t.R * (L >= 2 ? 0.6 : 0.92), free: L < GRAB_LAYERS, m, id, base: _col.clone() });
     }
   }
   for (const k in cnt) { IM[k].count = cnt[k]; IM[k].instanceMatrix.needsUpdate = true; IM[k].instanceColor.needsUpdate = true; }
   nearCenter.set(px, pz); nearDirty = false; hover = null;
 }
 function rebuildFar() {
-  const px = P.x, pz = P.z, R = QP.near - 0.5; let n = 0, ng = 0; const pos = new THREE.Vector3(), quat = new THREE.Quaternion();
+  // every cell outside the near ring shows real low-poly tires: 2 layers up to QP.dense metres, then 1
+  const px = P.x, pz = P.z; let n = 0, ng = 0; const pos = new THREE.Vector3(), quat = new THREE.Quaternion();
   for (let c = 0; c < N * N; c++) {
     const k = mountain.count[c]; if (!k) continue;
     const i = c % N, j = (c / N) | 0;
-    if (QP.far === 2 && ((i + j) & 1)) continue;
-    if (QP.far === 4 && ((i & 1) || (j & 1))) continue;
-    const cx = ORIGIN.x + (i + 0.5) * CELL, cz = ORIGIN.z + (j + 0.5) * CELL;
-    if (Math.hypot(cx - px, cz - pz) <= R + 0.71) { if (Math.hypot(cx - px, cz - pz) <= QP.near) continue; }
-    const type = mountain.typeAt(c, k - 1), t = tireXform(c, k - 1, 0, type, pos, quat);
-    if (type === C.GOLD_ID) { if (ng < 8) { setInst(IM.gfar, ng, pos, quat, t); IM.gfar.setColorAt(ng, _col.setRGB(1, 1, 1)); ng++; } continue; }
-    if (n >= MAXF) break;
-    setInst(IM.far, n, pos, quat, t); IM.far.setColorAt(n, tint(c, k - 1, 0, type)); n++;
+    const cx = ORIGIN.x + (i + 0.5) * CELL, cz = ORIGIN.z + (j + 0.5) * CELL, d = Math.hypot(cx - px, cz - pz);
+    if (d <= QP.near) continue;
+    const layers = Math.min(k, d < QP.dense ? 2 : 1);
+    for (let L = 0; L < layers; L++) {
+      const index = k - 1 - L, type = mountain.typeAt(c, index), t = tireXform(c, index, L, type, pos, quat);
+      const big = 1 + Math.min(0.35, Math.max(0, d - QP.near) * 0.012); // far tires slightly larger so they still read as tires
+      if (type === C.GOLD_ID) { if (ng < 96) { setInst(IM.gfar, ng, pos, quat, t, big * 1.15); IM.gfar.setColorAt(ng, _col.setRGB(1, 1, 1)); ng++; } continue; }
+      if (n >= MAXF) break;
+      setInst(IM.far, n, pos, quat, t, big); const tc = tint(c, index, L, type); IM.far.setColorAt(n, tc.multiplyScalar(1.25)); n++;
+    }
   }
   IM.far.count = n; IM.gfar.count = ng;
   for (const m of [IM.far, IM.gfar]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
@@ -283,6 +302,8 @@ const FL = van.userData.fl;
 const cargoIM = new THREE.InstancedMesh(geoHigh, tm.rubber, LAYOUT.cap * 2); cargoIM.count = 0; cargoIM.castShadow = true; cargoIM.receiveShadow = true; cargoIM.frustumCulled = false;
 const cargoGold = new THREE.InstancedMesh(geoHigh, tm.gold, 8); cargoGold.count = 0; cargoGold.frustumCulled = false; cargoGold.castShadow = true;
 van.add(cargoIM, cargoGold);
+const vanLamp = new THREE.PointLight(0xfff0d6, 3.2, 5.5, 1.6); vanLamp.position.set(VEH.cargo.L * 0.45, FL + VEH.cargo.H - 0.15, 0); van.add(vanLamp);
+const vanFill = new THREE.PointLight(0xdfe8ff, 2.2, 6, 1.6); vanFill.position.set(-1.2, FL + 1.1, 0); van.add(vanFill);
 const V = { state: 'loading', t: 0, x: VAN_X, doors: 1, pend: [] }; // pend: placements in flight
 function slotLocal(slotIdx, sub, type, outPos, outQuat) {
   const s = LAYOUT.slots[slotIdx], t = C.TIRES[type];
@@ -299,12 +320,13 @@ function rebuildCargo() {
   let n = 0, g = 0; const pos = new THREE.Vector3(), quat = new THREE.Quaternion();
   S.van.fill.forEach((slot, si) => slot.forEach((type, sub) => {
     const t = slotLocal(si, sub, type, pos, quat);
-    if (type === C.GOLD_ID) { setInst(cargoGold, g++, pos, quat, t); } else { setInst(cargoIM, n, pos, quat, t); cargoIM.setColorAt(n, _col.setRGB(0.9 + hash2(si, sub) * 0.2, 0.9 + hash2(si, sub) * 0.2, 0.9 + hash2(si, sub) * 0.2)); n++; }
+    if (type === C.GOLD_ID) { setInst(cargoGold, g++, pos, quat, t); } else { setInst(cargoIM, n, pos, quat, t); { const k = 1.35 + hash2(si, sub) * 0.35; cargoIM.setColorAt(n, _col.setRGB(k, k, k * 0.98)); } n++; }
   }));
   cargoIM.count = n; cargoGold.count = g; cargoIM.instanceMatrix.needsUpdate = true; if (cargoIM.instanceColor) cargoIM.instanceColor.needsUpdate = true; cargoGold.instanceMatrix.needsUpdate = true;
 }
 function virtFill() { const f = S.van.fill.map(s => s.slice()); for (const p of V.pend) { if (p.sub) f[p.slot].push(p.type); else f[p.slot] = [p.type]; } return f; }
 function vanFillCount() { return S.van.fill.length; }
+function vanDist() { return Math.hypot(P.x - van.position.x - 2, P.z - VAN_Z); }
 function vanReady() { return V.state === 'loading'; }
 function vanRearWorld(out = new THREE.Vector3()) { return out.set(van.position.x, 0, VAN_Z); }
 
@@ -456,8 +478,9 @@ function pickAt(ndc) {
 function inThrowZone() {
   if (!vanReady()) return false;
   const dx = P.x - van.position.x, dz = P.z - VAN_Z;
-  return dx < 0.8 && dx > -7.5 && Math.abs(dz) < 4.5;
+  return dx <= -THROW_ZONE.near + 0.35 && dx >= -THROW_ZONE.far && Math.abs(dz) <= THROW_ZONE.half;
 }
+function nearVanButOut() { if (!vanReady()) return false; const dx = P.x - van.position.x, dz = P.z - VAN_Z; return !inThrowZone() && dx > -14 && dx < 1 && Math.abs(dz) < 7; }
 function tryGrab(rec) {
   if (!rec) return false;
   if (rec._t > C.PLAYER.reach) { toast('Troppo lontana: avvicinati'); return true; }
@@ -530,6 +553,7 @@ function doAction(ndc) {
   const rec = pickAt(ndc || lastAimNDC);
   if (rec && rec._t <= C.PLAYER.reach + 1.5) { if (tryGrab(rec)) return; }
   if (inThrowZone()) { if (!tryThrow() && !carried()) toast('Non hai gomme: vai a prenderle alla montagna'); return; }
+  if (carriedNow() && nearVanButOut()) { toast('Avvicinati al furgone: entra nel riquadro verde'); return; }
   if (rec) { tryGrab(rec); return; }
   if (carried() && !vanReady()) toast('Il furgone sta arrivando, aspetta un attimo');
 }
@@ -543,18 +567,18 @@ function updateDust(dt) { for (let i = dusts.length - 1; i >= 0; i--) { const d 
 /* ---------------- van state machine ---------------- */
 function updateVan(dt) {
   V.t += dt;
-  const away = Math.max(1, VEH.away - 3.4 - 4.2);
+  const away = Math.max(1, VEH.away - 3.4 - 4.2 - 1.1);
   switch (V.state) {
-    case 'closing': V.doors = Math.max(0, 1 - V.t / 0.9); if (V.t >= 0.9) { sfx.doors(); V.state = 'leaving'; V.t = 0; } break;
-    case 'leaving': { const k = Math.min(1, V.t / 3.4); van.position.x = VAN_X + (VAN_FAR - VAN_X) * k * k; if (k >= 1) { V.state = 'away'; V.t = 0; van.visible = false; S.van.fill = []; S.van.trips++; rebuildCargo(); } break; }
-    case 'away': if (V.t >= away) { V.state = 'arriving'; V.t = 0; van.visible = true; sfx.horn(); } break;
-    case 'arriving': { const k = Math.min(1, V.t / 4.2), e = 1 - Math.pow(1 - k, 2.4); van.position.x = VAN_FAR + (VAN_X - VAN_FAR) * e; if (Math.floor(V.t / 0.6) !== Math.floor((V.t - dt) / 0.6) && k < 0.95) sfx.beep(); if (k >= 1) { V.state = 'opening'; V.t = 0; } break; }
+    case 'closing': V.doors = Math.max(0, 1 - V.t / 0.9); if (V.t >= 0.9) { sfx.doors(); V.state = 'starting'; V.t = 0; sfx.engineStart(vanDist()); } break;
+    case 'starting': if (V.t >= 1.1) { V.state = 'leaving'; V.t = 0; V.engine = true; } break;
+    case 'leaving': { const k = Math.min(1, V.t / 3.4); van.position.x = VAN_X + (VAN_FAR - VAN_X) * k * k; if (k >= 1) { V.state = 'away'; V.t = 0; van.visible = false; V.engine = false; S.van.fill = []; S.van.trips++; rebuildCargo(); } break; }
+    case 'away': if (V.t >= away) { V.state = 'arriving'; V.t = 0; van.visible = true; V.engine = true; sfx.horn(); } break;
+    case 'arriving': { const k = Math.min(1, V.t / 4.2), e = 1 - Math.pow(1 - k, 2.4); van.position.x = VAN_FAR + (VAN_X - VAN_FAR) * e; if (Math.floor(V.t / 0.6) !== Math.floor((V.t - dt) / 0.6) && k < 0.95) sfx.beep(); if (k >= 1) { V.state = 'opening'; V.t = 0; V.engine = false; sfx.engineStop(vanDist()); } break; }
     case 'opening': V.doors = Math.min(1, V.t / 1.0); if (V.t >= 1.0) { V.state = 'loading'; V.t = 0; } break;
   }
   G.poseDoors(van, V.doors);
   const moving = V.state === 'leaving' || V.state === 'arriving';
-  const d = Math.hypot(P.x - van.position.x - 2, P.z - VAN_Z);
-  sfx.setEngine(van.visible, moving ? 0.8 : 0.1, d);
+  sfx.setEngine(!!V.engine && van.visible, V.state === 'leaving' ? 0.8 : 0.45, vanDist());
   // spin the wheels while driving
   if (moving) for (const w of van.userData.wheels) w.rotation.y += dt * (V.state === 'leaving' ? 1 : -1) * 6;
 }
@@ -565,7 +589,7 @@ function blocked(x, z) {
   if (meshH(x, z) > 0.55) return true;
   for (const b of colliders) if (x > b.x0 - 0.3 && x < b.x1 + 0.3 && z > b.z0 - 0.3 && z < b.z1 + 0.3) return true;
   if (van.visible) { const vx = van.position.x, W = VEH.cargo.W / 2 + 0.25; if (x > vx - 0.35 && x < vx + VEH.cargo.L + 2.0 && Math.abs(z - VAN_Z) < W + 0.25) return true; }
-  if (st.cart > 0) { const fx = x - Math.sin(P.yaw) * 1.6, fz = z - Math.cos(P.yaw) * 1.6; if (meshH(fx, fz) > 1.0) return true; if (van.visible && fx > van.position.x - 0.1 && Math.abs(fz - VAN_Z) < VEH.cargo.W / 2 + 0.2) return true; }
+  if (st.cart > 0) { const fx = x - Math.sin(P.yaw) * 2.0, fz = z - Math.cos(P.yaw) * 2.0; if (meshH(fx, fz) > 1.0) return true; if (van.visible && fx > van.position.x - 0.1 && Math.abs(fz - VAN_Z) < VEH.cargo.W / 2 + 0.2) return true; }
   return false;
 }
 function updatePlayer(dt) {
@@ -588,7 +612,7 @@ function updatePlayer(dt) {
   camera.position.set(P.x, P.eye + ground + Math.sin(P.bob) * 0.035 * Math.min(1, moving / 3), P.z);
   camera.rotation.set(P.pitch + (P.shake ? Math.sin(P.shake * 90) * 0.01 : 0), P.yaw, 0, 'YXZ');
   // cart follows in front of the player
-  if (st.cart > 0) { cart.position.set(P.x - sy * 1.05, 0, P.z - cy * 1.05); cart.rotation.y = P.yaw + Math.PI / 2; }
+  if (st.cart > 0) { cart.position.set(P.x - sy * 1.45, 0, P.z - cy * 1.45); cart.rotation.y = P.yaw + Math.PI / 2; }
   // hands sway
   handGroup.position.set(Math.sin(P.bob * 0.5) * 0.01, Math.abs(Math.cos(P.bob * 0.5)) * 0.012, 0);
 }
@@ -703,6 +727,7 @@ function resize() { renderer.setSize(innerWidth, innerHeight); camera.aspect = i
 addEventListener('resize', resize);
 
 /* ---------------- loop ---------------- */
+let workerT = 0;
 let last = performance.now(), fpsAcc = 0, fpsN = 0, fps = 60, adaptT = 0;
 let frameN = 0;
 function frame(now) { frameN++;
@@ -740,16 +765,22 @@ function step(dt) {
       else if (rec._t > C.PLAYER.reach) { text = 'Avvicinati'; cls = 'far'; }
       else { text = rec.type === C.GOLD_ID ? 'Gomma d\'oro!' : `Prendi ${t.name}`; cls = rec.type === C.GOLD_ID ? 'gold' : 'ok'; }
     } else if (inThrowZone() && carriedNow()) { text = 'Lancia nel furgone'; cls = 'throw'; }
+    else if (carriedNow() && nearVanButOut()) { text = 'Avvicinati al furgone'; cls = 'far'; }
     lab.textContent = text; lab.className = cls; ch.className = cls;
   }
   if (isTouch) throwBtn.classList.toggle('hidden', !(playing && inThrowZone() && carriedNow()));
+  zoneMesh.visible = vanReady();
+  zoneMat.opacity = carriedNow() ? (inThrowZone() ? 1 : 0.75 + Math.sin(performance.now() / 260) * 0.25) : 0.45;
+  $('zonehint').classList.toggle('hidden', !(playing && carriedNow() && nearVanButOut()));
   // held button = keep working (throw cadence / grab the next tire under the crosshair)
   if (actionHeld && playing && !shopOpen) {
     if (inThrowZone() && carriedNow() && throwCD <= 0) tryThrow();
     else if (!isTouch && grabBusy <= 0) { const r = pickAt(lastAimNDC); if (r && r.free && r._t <= C.PLAYER.reach && carried() < capacity()) tryGrab(r); }
   }
   // workers watch you
+  workerT += dt;
   for (const w of workers) {
+    w.g.userData.anim(workerT);
     const hd = w.g.userData.head, dx = P.x - w.g.position.x, dz = P.z - w.g.position.z;
     const target = Math.atan2(-dz, dx) - w.g.rotation.y; let a = ((target + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; a = G.clamp(a, -1.3, 1.3);
     w.next -= dt; if (w.next <= 0) { w.shake = 1.4; w.next = 14 + Math.random() * 16; }

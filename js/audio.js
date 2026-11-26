@@ -80,20 +80,40 @@ export class Sfx {
   milestone() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.45); [523, 659, 784, 1047].forEach((f, i) => this.tone(o, t + i * 0.09, f, f, 0.35, 'triangle', 0.25)); }
   click() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.25); this.tone(o, t, 1400, 900, 0.03, 'square', 0.12); }
   // van engine, continuous. level 0..1 (idle..revving), gain by distance
+  // distance attenuation for the van: full-ish at 3 m, quiet past 20 m
+  engAtt(dist) { return 1 / (1 + Math.max(0, dist - 3) * 0.22 + Math.max(0, dist - 3) ** 2 * 0.012); }
+  engineStart(dist = 10) {
+    if (!this.ok()) return; const c = this.ctx, t = this.t, a = this.engAtt(dist);
+    // starter motor whirr + catch
+    const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter(); o.type = 'sawtooth'; f.type = 'lowpass'; f.frequency.value = 700;
+    o.frequency.setValueAtTime(18, t); for (let i = 0; i < 6; i++) o.frequency.setValueAtTime(i & 1 ? 16 : 24, t + i * 0.09);
+    o.frequency.linearRampToValueAtTime(62, t + 0.75); o.frequency.exponentialRampToValueAtTime(38, t + 1.3);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.05 * a, t + 0.05); g.gain.linearRampToValueAtTime(0.08 * a, t + 0.7); g.gain.exponentialRampToValueAtTime(0.0008, t + 1.4);
+    o.connect(f); f.connect(g); g.connect(this.bus); o.start(t); o.stop(t + 1.5);
+  }
+  engineStop(dist = 10) {
+    if (!this.ok()) return; const c = this.ctx, t = this.t, a = this.engAtt(dist);
+    const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter(); o.type = 'triangle'; f.type = 'lowpass'; f.frequency.value = 240;
+    o.frequency.setValueAtTime(34, t); o.frequency.exponentialRampToValueAtTime(14, t + 0.6);
+    g.gain.setValueAtTime(0.06 * a, t); g.gain.exponentialRampToValueAtTime(0.0006, t + 0.7);
+    o.connect(f); f.connect(g); g.connect(this.bus); o.start(t); o.stop(t + 0.8);
+  }
   setEngine(on, level = 0, dist = 10) {
     if (!this.ctx) return;
     if (on && !this.engine) {
+      // soft diesel hum: triangle + filtered noise, no harsh square/saw
       const c = this.ctx, o1 = c.createOscillator(), o2 = c.createOscillator(), lp = c.createBiquadFilter(), g = c.createGain();
-      o1.type = 'sawtooth'; o2.type = 'square'; lp.type = 'lowpass'; lp.frequency.value = 260; g.gain.value = 0;
-      o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(this.bus); o1.start(); o2.start();
-      this.engine = { o1, o2, lp, g };
+      o1.type = 'triangle'; o2.type = 'sine'; lp.type = 'lowpass'; lp.frequency.value = 180; lp.Q.value = 0.5; g.gain.value = 0;
+      const n = c.createBufferSource(); n.buffer = this.noiseBuf; n.loop = true; const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 120; nf.Q.value = 1.2; const ng = c.createGain(); ng.gain.value = 0.35;
+      o1.connect(lp); o2.connect(lp); n.connect(nf); nf.connect(ng); ng.connect(lp); lp.connect(g); g.connect(this.bus); o1.start(); o2.start(); n.start();
+      this.engine = { o1, o2, lp, g, n };
     }
     if (!this.engine) return;
-    const e = this.engine, t = this.ctx.currentTime, base = 34 + level * 40;
-    e.o1.frequency.setTargetAtTime(base, t, 0.15); e.o2.frequency.setTargetAtTime(base * 0.5, t, 0.15);
-    e.lp.frequency.setTargetAtTime(220 + level * 500, t, 0.2);
-    const vol = on && !this.muted ? Math.min(0.16, 1.4 / (dist * dist * 0.08 + 6)) * (0.6 + level) : 0;
-    e.g.gain.setTargetAtTime(vol, t, 0.2);
+    const e = this.engine, t = this.ctx.currentTime, base = 30 + level * 26;
+    e.o1.frequency.setTargetAtTime(base, t, 0.25); e.o2.frequency.setTargetAtTime(base * 0.5, t, 0.25);
+    e.lp.frequency.setTargetAtTime(150 + level * 200, t, 0.3);
+    const vol = on && !this.muted ? 0.055 * (0.5 + level * 0.6) * this.engAtt(dist) : 0;
+    e.g.gain.setTargetAtTime(vol, t, on ? 0.25 : 0.12);
   }
   startWind() {
     const c = this.ctx, s = c.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;

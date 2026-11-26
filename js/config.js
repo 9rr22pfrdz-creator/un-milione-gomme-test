@@ -13,7 +13,7 @@ export const TIRES = [
   { id: 1, key: 'r16', name: '16"', value: 1.5, p: 0.35, R: 0.315, ri: 0.205, w: 0.2 },
   { id: 2, key: 'r18', name: '18"', value: 2.0, p: 0.205, R: 0.34, ri: 0.228, w: 0.225 },
   { id: 3, key: 'scooter', name: 'Scooter', value: 0.6, p: 0.045, R: 0.2, ri: 0.12, w: 0.105, half: true },
-  { id: 4, key: 'gold', name: "d'oro", value: 50, p: 0.0012, R: 0.315, ri: 0.205, w: 0.2, gold: true },
+  { id: 4, key: 'gold', name: "d'oro", value: 30, p: 0.004, R: 0.315, ri: 0.205, w: 0.2, gold: true },
 ];
 export const GOLD_ID = 4, SCOOTER_ID = 3;
 export const AVG_TIRE_VALUE = (() => {

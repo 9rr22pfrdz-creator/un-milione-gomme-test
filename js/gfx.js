@@ -84,17 +84,17 @@ export function tireTextures() {
   // sidewalls (mirrored)
   for (const flip of [false, true]) {
     const V = v => flip ? 1 - v : v, B = (v0, v1, col, bump) => band(Math.min(V(v0), V(v1)), Math.max(V(v0), V(v1)), col, bump);
-    B(0, 0.035, '#353537', '#9a9a9a');       // bead
+    B(0, 0.035, '#5e5e62', '#b0b0b0');       // bead (rim highlight)
     B(0.035, 0.05, '#151516', '#5a5a5a');
-    B(0.12, 0.125, '#2a2a2b', '#a0a0a0');    // rim protector line
-    B(0.235, 0.24, '#2a2a2b', '#a0a0a0');
+    B(0.115, 0.13, '#56565a', '#b8b8b8');    // rim protector line
+    B(0.232, 0.243, '#4e4e52', '#b0b0b0');
     // lettering band
     x.save(); y.save();
     const vMid = V(0.18) * H; x.font = 'bold 30px Arial Black, Arial, sans-serif'; y.font = x.font; x.textBaseline = y.textBaseline = 'middle';
     const words = ['UN MILIONE', '205/55 R16 91V', 'M+S', 'TUBELESS', 'RADIAL', 'MADE IN ITALY'];
     let px = 10, k = 0;
     while (px < W) { const wd = words[k++ % words.length]; const tw = x.measureText(wd).width;
-      for (const [ctx, col] of [[x, '#46464a'], [y, '#d8d8d8']]) { ctx.save(); ctx.translate(px, vMid); if (flip) ctx.scale(1, -1); ctx.scale(1, 0.62); ctx.fillStyle = col; ctx.fillText(wd, 0, 0); ctx.restore(); }
+      for (const [ctx, col] of [[x, '#9a9a9e'], [y, '#e4e4e4']]) { ctx.save(); ctx.translate(px, vMid); if (flip) ctx.scale(1, -1); ctx.scale(1, 0.62); ctx.fillStyle = col; ctx.fillText(wd, 0, 0); ctx.restore(); }
       px += tw + 46; }
     x.restore(); y.restore();
     // radial ribs near the shoulder
@@ -127,8 +127,10 @@ export function tireMaterials() {
   const gold = new THREE.MeshStandardMaterial({ map, bumpMap: bump, bumpScale: 2, roughness: 0.28, metalness: 1, color: 0xffd36a, emissive: 0x3a2400, emissiveIntensity: 0.6 });
   // gold needs a light base: use the bump as a brightness map
   gold.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#ifdef USE_MAP\n vec4 sampledDiffuseColor = texture2D( map, vMapUv ); diffuseColor.rgb *= clamp(0.35 + sampledDiffuseColor.r * 4.5, 0.0, 1.2);\n#endif'); };
-  const rubberLow = new THREE.MeshStandardMaterial({ map, roughness: 0.92, metalness: 0, color: 0xdddddd });
-  return { rubber, gold, rubberLow };
+  const rubberLow = new THREE.MeshStandardMaterial({ map, roughness: 0.68, metalness: 0, color: 0xffffff, emissive: 0x101012 });
+  // far golds glow a little more so they sparkle across the whole pile
+  const goldFar = gold.clone(); goldFar.emissive = new THREE.Color(0x7a5200); goldFar.emissiveIntensity = 0.9; goldFar.onBeforeCompile = gold.onBeforeCompile;
+  return { rubber, gold, rubberLow, goldFar };
 }
 
 /* ---------- other textures ---------- */
