@@ -12,8 +12,8 @@ export const PIECES = {
 export const PIECE_ORDER = ['straight', 'curveR', 'curveL', 'intake'];
 export const SINK_DIST = 2.5;     // a belt ending this close to the van's rear bay throws its tires in
 export const INTAKE_REACH = 4.5;  // the intake grabs tires from the mountain within this radius of its back
-export const TIRE_GAP = 0.7;      // m between tire centres on a belt
-export const BASE_SPEED = 1.4;    // m/s at motor level 1 (x beltSpeed upgrade) -> 2 tires/s per intake
+export const TIRE_GAP = 0.62;     // m between tire centres on a belt
+export const BASE_SPEED = 1.8;    // m/s at motor level 1 (x beltSpeed upgrade) -> 2 tires/s per intake
 
 export const cellKey = (gx, gz) => gx + ',' + gz;
 export function cellCenter(gx, gz) { return { x: gx * GRID + GX0, z: gz * GRID + GZ0 }; }

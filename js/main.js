@@ -200,7 +200,7 @@ function inst(geo, mat, max, shadow) {
 }
 const IM = {
   high: inst(geoHigh, tm.rubber, MAXH, true), mid: inst(geoMid, tm.rubber, MAXM, QP.midShadow), far: inst(geoLow, tm.rubberLow, MAXF, false),
-  deep: inst(geoMid, tm.rubber, 2600, false), deepL: inst(geoLow, tm.rubber, 4200, false), ghigh: inst(geoHigh, tm.gold, 32, true), gmid: inst(geoMid, tm.gold, 48, true), gfar: inst(geoLow, tm.goldFar, 96, false),
+  deep: inst(geoMid, tm.rubber, 2600, false), deepL: inst(geoLow, tm.rubber, 4200, false), ghigh: inst(geoHigh, tm.gold, 96, true), gmid: inst(geoMid, tm.gold, 160, true), gfar: inst(geoLow, tm.goldFar, 400, false),
 };
 let nearRecs = [], nearCenter = new THREE.Vector2(1e9, 1e9), farCenter = new THREE.Vector2(1e9, 1e9), nearDirty = true, farDirty = true;
 const _m4 = new THREE.Matrix4(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _sc = new THREE.Vector3(), _col = new THREE.Color();
@@ -257,7 +257,7 @@ function rebuildFar() {
     for (let L = 0; L < layers; L++) {
       const index = k - 1 - L, type = mountain.typeAt(c, index), t = tireXform(c, index, L, type, pos, quat);
       const big = 1 + Math.min(0.35, Math.max(0, d - QP.near) * 0.012); // far tires slightly larger so they still read as tires
-      if (type === C.GOLD_ID) { if (ng < 96) { setInst(IM.gfar, ng, pos, quat, t, big * 1.15); IM.gfar.setColorAt(ng, _col.setRGB(1, 1, 1)); ng++; } continue; }
+      if (type === C.GOLD_ID) { if (ng < 400) { setInst(IM.gfar, ng, pos, quat, t, big * 1.15); IM.gfar.setColorAt(ng, _col.setRGB(1, 1, 1)); ng++; } continue; }
       if (n >= MAXF) break;
       setInst(IM.far, n, pos, quat, t, big); const tc = tint(c, index, L, type); IM.far.setColorAt(n, tc.multiplyScalar(1.02)); n++;
     }
@@ -284,7 +284,7 @@ function makeCargoIM(cap) {
 }
 const vanLamp = new THREE.PointLight(0xfff0d6, 3.2, 5.5, 1.6);
 const vanFill = new THREE.PointLight(0xdfe8ff, 2.2, 6, 1.6);
-const V = { state: 'loading', t: 0, x: VAN_X, doors: 1, pend: [] }; // pend: placements in flight
+const V = { state: 'loading', t: 0, x: VAN_X, doors: 1, pend: [], bayIn: 0, bayPend: 0 }; // pend: placements in flight
 // swap the vehicle at the bay (furgone -> furgone grande): new body, braid layout and capacity
 function setVehicle(tier) {
   const pos = van ? van.position.clone() : new THREE.Vector3(VAN_X, 0, VAN_Z), vis = van ? van.visible : true;
@@ -465,13 +465,13 @@ function updateBelts(dt) {
     if (p.type !== 'intake') continue;
     p.t = (p.t || 0) - dt; p.feeding = false;
     if (p.hopper.length && belts.logic.startFree(p)) { p.tires.push({ type: p.hopper.shift(), s: 0, spin: Math.random() * 6.28 }); }
-    if (p.t <= 0 && p.hopper.length + (p.inbound || 0) < 2 && intakeIndex(p) < intakeMax()) {
+    if (p.t <= 0 && p.hopper.length + (p.inbound || 0) < 4 && intakeIndex(p) < intakeMax()) {
       const b = BL.backPoint(p), got = autoTake(b.x, b.z, BL.INTAKE_REACH);
       p.t = interval;
       if (got) {
         p.feeding = true; p.inbound = (p.inbound || 0) + 1; const top = BL.cellCenter(p.gx, p.gz), d = BL.DIRS[p.rot];
-        startFlight({ kind: 'intake', type: got.type, from: got.pos, q0: got.quat, to: new THREE.Vector3(top.x - d[0] * 0.25, 1.55, top.z - d[1] * 0.25), q1: new THREE.Quaternion(), dur: 0.55, arc: 0.9, ease: 'out',
-          done: () => { p.inbound--; if (belts.pieces.includes(p)) p.hopper.push(got.type); else { const v = C.TIRES[got.type].value; S.money += v; S.stats.earned += v; S.stats.cleared++; } } }); // intake dismantled mid-air: sold, never lost
+        startFlight({ kind: 'intake', type: got.type, from: got.pos, q0: got.quat, to: new THREE.Vector3(top.x - d[0] * 0.25, 1.55, top.z - d[1] * 0.25), q1: new THREE.Quaternion(), dur: 0.42, arc: 0.9, ease: 'out',
+          done: () => { p.inbound--; if (belts.pieces.includes(p)) p.hopper.push(got.type); else { const v = tireVal(got.type); S.money += v; S.stats.earned += v; S.stats.cleared++; } } }); // intake dismantled mid-air: sold, never lost
         if (Math.random() < 0.5) sfx.grab(Math.min(2, got.type), 0, att(b.x, b.z) * 0.6);
       } else p.empty = true;
     }
@@ -503,7 +503,7 @@ function storeTire(type, from, o = {}) {
   startFlight({ kind: 'store', bay: b, type, from: from.clone(), q0: new THREE.Quaternion(), to, q1, dur: o.auto ? 0.45 : 0.5, arc: o.auto ? 0.5 : 0.6, spin: 0.3, ease: 'line',
     done: () => {
       storePend[b]--; S.storage[b] = Math.min(RACK.cap, S.storage[b] + 1); rack.setCounts(S.storage);
-      const val = C.TIRES[type].value; S.money += val; S.stats.earned += val; S.stats.cleared++; S.stats.bySize[type]++; S.stats.stored = (S.stats.stored || 0) + 1;
+      const val = tireVal(type); S.money += val; S.stats.earned += val; S.stats.cleared++; S.stats.bySize[type]++; S.stats.stored = (S.stats.stored || 0) + 1;
       if (o.auto) S.stats.auto = (S.stats.auto || 0) + 1; else S.stats.thrown++;
       sfx.thud(1, 0, o.auto ? att(to.x, to.z) * 0.6 : 0.8);
       if (!o.auto || popT <= 0) { pop(to.clone(), '+' + money(val), o.auto ? 'soft' : ''); popT = 0.18; }
@@ -631,7 +631,9 @@ arms.load(S.arms); syncArms();
 
 /* ---------------- Fase 5: carrucola magnetica, macchina dei fascioni, trituratore ---------------- */
 const tireFly = { tireMesh: (type) => flyMesh(type), freeMesh: (m) => { scene.remove(m); flyPool.push(m); } };
-function sellTire(type) { const v = C.TIRES[type].value; S.money += v; S.stats.earned += v; S.stats.cleared++; }
+function payMul() { return C.UPG.trust ? C.UPG.trust.lv[S.lv.trust || 0] : 1; } // Cliente di fiducia
+function tireVal(type) { return C.TIRES[type].value * payMul(); }
+function sellTire(type) { const v = tireVal(type); S.money += v; S.stats.earned += v; S.stats.cleared++; }
 // ---- trituratore ----
 function shredMax() { return C.UPG.shredder.lv[S.lv.shredder]; }
 const shredders = new ShredWorld({ scene, sfx, att, ...tireFly, onShred: (s, type, kg) => onShred(s, type, kg) });
@@ -644,7 +646,7 @@ function shredFeed(s, type, from, o = {}) {
   return true;
 }
 function onShred(s, type, kg) {
-  const val = F5.shredValue(type);
+  const val = F5.shredValue(type) * payMul();
   S.money += val; S.stats.earned += val; S.stats.cleared++; S.stats.shredded++; S.granulate.kg += kg;
   const sacks = Math.floor(S.granulate.kg / F5.SHRED.SACK);
   if (sacks > S.granulate.sacks) { S.granulate.sacks = sacks; sfx.thud(2, 0, att(s.x, s.z)); pop(shredders.hopperPos(s), `Sacco pieno! ${fmt.format(S.granulate.kg)} kg`, 'gold'); }
@@ -731,7 +733,7 @@ function pulleyMax() { return C.UPG.pulley.lv[S.lv.pulley]; }
 const pulleys = new PulleyWorld({
   scene, sfx, att, ...tireFly,
   source: (l) => autoPeek(l.geo.P.x, l.geo.P.z, F5.PULLEY.PICK_R),
-  take: (l, at, n) => { const out = []; for (let i = 0; i < n; i++) { const g = autoTake(l.geo.P.x, l.geo.P.z, F5.PULLEY.PICK_R); if (!g) break; out.push(g.type); } if (out.length) { sfx.grab(1, 0, att(l.geo.P.x, l.geo.P.z) * 0.6); dust(new THREE.Vector3(l.geo.P.x, at.y, l.geo.P.z), 5); } return out; },
+  take: (l, at, n) => { const out = []; for (let i = 0; i < n; i++) { const g = autoTake(l.geo.P.x, l.geo.P.z, F5.PULLEY.PICK_R); if (!g) break; out.push(g.type); } if (out.length) sfx.grab(1, 0, att(l.geo.P.x, l.geo.P.z) * 0.6); return out; }, // v1.0.2: no dust puff when tires leave the pile
   dest: (l, n) => dropDest(l.geo.D.x, l.geo.D.z, F5.PULLEY.DROP_R, n),
   release: (l, type, pos, d) => dropRelease(type, pos, d),
 });
@@ -766,7 +768,7 @@ function dronesUnlocked() { return S.lv.drones >= 1; }
 // each drone works its own stretch of the mountain front facing the yard
 function dronePick(d) {
   if (halted || remaining <= 1) return null;
-  const tx = VAN_X - 4, tz = VAN_Z + ((d.i % 8) - 3.5) * 3.4;
+  const tx = VAN_X - 4, tz = VAN_Z + ((d.i % 16) - 7.5) * 1.8;
   let best = -1, bd = 1e9;
   for (let c = 0; c < N * N; c++) { if (!mountain.count[c]) continue; const dd = Math.hypot(ORIGIN.x + (c % N) + 0.5 - tx, ORIGIN.z + ((c / N) | 0) + 0.5 - tz) + ((c * 7919) % 13) * 0.07; if (dd < bd) { bd = dd; best = c; } }
   if (best < 0) return null;
@@ -792,7 +794,7 @@ const spiders = new SpiderWorld({ scene, sfx, att, ...tireFly,
   source: (a) => { if (halted) return null; const p = autoPeek(a.x, a.z, ARM_REACH); return p && Math.hypot(p.x - a.x, p.z - a.z) <= ARM_REACH + 0.5 ? p : null; },
   take: (a, at, n) => takeN(a, at, n), dest: (a, n) => armDest(a, n), release: (a, type, pos, d) => armRelease(a, type, pos, d) });
 spiders.load(S.spiders);
-function syncSpiders() { spiders.speed = 1.6 * C.UPG.spiderBoost.lv[S.lv.spiderBoost]; spiders.grab = 2; }
+function syncSpiders() { spiders.speed = 2.2 * C.UPG.spiderBoost.lv[S.lv.spiderBoost]; spiders.grab = 3 + S.lv.spiderBoost; }
 syncSpiders();
 /* ---------------- il finale ---------------- */
 const ending = new Ending({ scene, sfx, P, $, center: M_CENTER, tireGeo: geoMid, tireMat: tm.rubber, ...tireFly,
@@ -847,16 +849,16 @@ function vehicleBay(tier = VEH_MAX) { const v = C.VEHICLES[tier], len = v.cargo.
 const overlap = (a, b, pad = 0) => a.x0 < b.x1 + pad && a.x1 > b.x0 - pad && a.z0 < b.z1 + pad && a.z1 > b.z0 - pad;
 function evictPieces() {
   const bay = vehicleBay(Math.max(S.vehicle, S.lv.vehicle)); let refund = 0, n = 0;
-  for (const p of belts.pieces.slice()) { const f = BeltWorld.footprint(p.type, p.gx, p.gz, p.rot); if (overlap(f, bay) || overlap(f, FBAY) || colliders.some(c => overlap(f, c))) { refund += BL.PIECES[p.type].cost; for (const t of p.tires.concat(p.hopper.map(type => ({ type })))) refund += C.TIRES[t.type].value; belts.remove(p); n++; } }
-  for (const a of arms.list.slice()) { const f = ArmWorld.footprint(a.gx, a.gz); if (overlap(f, bay) || overlap(f, FBAY) || colliders.some(c => overlap(f, c))) { refund += ARM_COST; for (const t of arms.remove(a)) refund += C.TIRES[t].value; n++; } }
-  for (const l of pulleys.list.slice()) { if ([l.a, l.b].some(c => { const f = PulleyWorld.footprint(c.gx, c.gz); return overlap(f, bay) || overlap(f, FBAY) || colliders.some(k => overlap(f, k)); })) { refund += F5.PULLEY.COST; for (const t of pulleys.remove(l)) refund += C.TIRES[t].value; n++; } }
-  for (const q of shredders.list.slice()) { const f = ShredWorld.footprint(q.gx, q.gz); if (overlap(f, bay) || overlap(f, FBAY) || colliders.some(c => overlap(f, c))) { refund += F5.SHRED.COST; for (const t of shredders.remove(q)) refund += C.TIRES[t].value; n++; } }
+  for (const p of belts.pieces.slice()) { const f = BeltWorld.footprint(p.type, p.gx, p.gz, p.rot); if (overlap(f, bay) || overlap(f, FBAY) || colliders.some(c => overlap(f, c))) { refund += BL.PIECES[p.type].cost; for (const t of p.tires.concat(p.hopper.map(type => ({ type })))) refund += tireVal(t.type); belts.remove(p); n++; } }
+  for (const a of arms.list.slice()) { const f = ArmWorld.footprint(a.gx, a.gz); if (overlap(f, bay) || overlap(f, FBAY) || colliders.some(c => overlap(f, c))) { refund += ARM_COST; for (const t of arms.remove(a)) refund += tireVal(t); n++; } }
+  for (const l of pulleys.list.slice()) { if ([l.a, l.b].some(c => { const f = PulleyWorld.footprint(c.gx, c.gz); return overlap(f, bay) || overlap(f, FBAY) || colliders.some(k => overlap(f, k)); })) { refund += F5.PULLEY.COST; for (const t of pulleys.remove(l)) refund += tireVal(t); n++; } }
+  for (const q of shredders.list.slice()) { const f = ShredWorld.footprint(q.gx, q.gz); if (overlap(f, bay) || overlap(f, FBAY) || colliders.some(c => overlap(f, c))) { refund += F5.SHRED.COST; for (const t of shredders.remove(q)) refund += tireVal(t); n++; } }
   const padOn = S.lv.drones >= 1, inPad = f => padOn && overlap(f, PAD_BOX);
-  for (const p of belts.pieces.slice()) { const f = BeltWorld.footprint(p.type, p.gx, p.gz, p.rot); if (inPad(f)) { refund += BL.PIECES[p.type].cost; for (const t of p.tires.concat(p.hopper.map(type => ({ type })))) refund += C.TIRES[t.type].value; belts.remove(p); n++; } }
-  for (const a of arms.list.slice()) if (inPad(ArmWorld.footprint(a.gx, a.gz))) { refund += ARM_COST; for (const t of arms.remove(a)) refund += C.TIRES[t].value; n++; }
-  for (const q of shredders.list.slice()) if (inPad(ShredWorld.footprint(q.gx, q.gz))) { refund += F5.SHRED.COST; for (const t of shredders.remove(q)) refund += C.TIRES[t].value; n++; }
-  for (const l of pulleys.list.slice()) if ([l.a, l.b].some(c => inPad(PulleyWorld.footprint(c.gx, c.gz)))) { refund += F5.PULLEY.COST; for (const t of pulleys.remove(l)) refund += C.TIRES[t].value; n++; }
-  for (const q of spiders.list.slice()) { const f = SpiderWorld.footprint(q.gx, q.gz); if (overlap(f, bay) || overlap(f, FBAY) || inPad(f) || colliders.some(c => overlap(f, c))) { refund += SPIDER.COST; for (const t of spiders.remove(q)) refund += C.TIRES[t].value; n++; } }
+  for (const p of belts.pieces.slice()) { const f = BeltWorld.footprint(p.type, p.gx, p.gz, p.rot); if (inPad(f)) { refund += BL.PIECES[p.type].cost; for (const t of p.tires.concat(p.hopper.map(type => ({ type })))) refund += tireVal(t.type); belts.remove(p); n++; } }
+  for (const a of arms.list.slice()) if (inPad(ArmWorld.footprint(a.gx, a.gz))) { refund += ARM_COST; for (const t of arms.remove(a)) refund += tireVal(t); n++; }
+  for (const q of shredders.list.slice()) if (inPad(ShredWorld.footprint(q.gx, q.gz))) { refund += F5.SHRED.COST; for (const t of shredders.remove(q)) refund += tireVal(t); n++; }
+  for (const l of pulleys.list.slice()) if ([l.a, l.b].some(c => inPad(PulleyWorld.footprint(c.gx, c.gz)))) { refund += F5.PULLEY.COST; for (const t of pulleys.remove(l)) refund += tireVal(t); n++; }
+  for (const q of spiders.list.slice()) { const f = SpiderWorld.footprint(q.gx, q.gz); if (overlap(f, bay) || overlap(f, FBAY) || inPad(f) || colliders.some(c => overlap(f, c))) { refund += SPIDER.COST; for (const t of spiders.remove(q)) refund += tireVal(t); n++; } }
   if (n) { S.money += refund; S.belts = belts.logic.serialize(); S.arms = arms.serialize(); S.pulleys = pulleys.serialize(); S.shredders = shredders.serialize(); S.spiders = spiders.serialize(); toast(`${n} pezz${n > 1 ? 'i' : 'o'} nel posto del mezzo o dello scaffale: smontat${n > 1 ? 'i' : 'o'}, +${money(refund)}`, 3500); }
   return n;
 }
@@ -931,7 +933,7 @@ function placeCheck(type, gx, gz, rot) {
   } else if (type === 'spider') {
     if (hs[0] > 0.6) return 'Troppo dentro la montagna: la torretta va ai piedi del mucchio';
     if (!mountainNear(cc.x, cc.z, SPIDER.LIMB_R + ARM_REACH - 0.2)) return 'Troppo lontano dalla montagna: le braccia devono arrivare al mucchio';
-    if (spiders.count() >= spiderMax()) return 'Hai già il braccio a ragno';
+    if (spiders.count() >= spiderMax()) return spiderMax() === 1 ? 'Hai già il braccio a ragno: compra il secondo livello per averne un altro' : 'Hai già tutti i bracci a ragno';
   } else if (type === 'shredder') {
     if (Math.max(...hs) > 0.1) return 'Sulla montagna non si costruisce';
     if (shredders.count() >= shredMax()) return `${shredMax() === 1 ? 'Massimo 1 trituratore' : `Massimo ${shredMax()} trituratori`}: compra un altro livello di Trituratore`;
@@ -968,18 +970,18 @@ function placePiece() {
 function dismantle(p = build.del) {
   if (!p) return false;
   if (p.type === 'pulley' || p.type === 'shredder' || p.type === 'spider') {
-    const types = p.type === 'pulley' ? pulleys.remove(p) : p.type === 'spider' ? spiders.remove(p) : shredders.remove(p), cost = PINFO[p.type].cost; let v = 0; for (const t of types) { v += C.TIRES[t].value; S.stats.cleared++; } S.money += cost + v; S.stats.earned += v;
+    const types = p.type === 'pulley' ? pulleys.remove(p) : p.type === 'spider' ? spiders.remove(p) : shredders.remove(p), cost = PINFO[p.type].cost; let v = 0; for (const t of types) { v += tireVal(t); S.stats.cleared++; } S.money += cost + v; S.stats.earned += v;
     S.pulleys = pulleys.serialize(); S.shredders = shredders.serialize(); S.spiders = spiders.serialize();
     sfx.unclunk(); toast(`Smontato: +${money(cost)}${types.length ? ` (+${types.length} gomm${types.length > 1 ? 'e' : 'a'} vendute)` : ''}`, 1400);
     renderBuildBar(); updateHUD(); saveNow(); return true;
   }
   if (p.type === 'arm') {
-    const types = arms.remove(p); let v = 0; for (const t of types) { v += C.TIRES[t].value; S.stats.cleared++; } S.money += ARM_COST + v; S.stats.earned += v; S.arms = arms.serialize();
+    const types = arms.remove(p); let v = 0; for (const t of types) { v += tireVal(t); S.stats.cleared++; } S.money += ARM_COST + v; S.stats.earned += v; S.arms = arms.serialize();
     sfx.unclunk(); toast(`Smontato: +${money(ARM_COST)}${types.length ? ` (+${types.length} gomm${types.length > 1 ? 'e' : 'a'} vendute)` : ''}`, 1400);
     renderBuildBar(); updateHUD(); saveNow(); return true;
   }
   const cost = BL.PIECES[p.type].cost; S.money += cost;
-  const lost = p.tires.length + p.hopper.length; for (const t of p.tires.concat(p.hopper.map(type => ({ type })))) { S.money += C.TIRES[t.type].value; S.stats.cleared++; S.stats.earned += C.TIRES[t.type].value; } // tires on it: sold on the spot, never lost
+  const lost = p.tires.length + p.hopper.length; for (const t of p.tires.concat(p.hopper.map(type => ({ type })))) { S.money += tireVal(t.type); S.stats.cleared++; S.stats.earned += tireVal(t.type); } // tires on it: sold on the spot, never lost
   belts.remove(p); S.belts = belts.logic.serialize();
   sfx.unclunk(); toast(`Smontato: +${money(cost)}${lost ? ` (+${lost} gomm${lost > 1 ? 'e' : 'a'} vendute)` : ''}`, 1400);
   renderBuildBar(); updateHUD(); saveNow(); return true;
@@ -1070,11 +1072,13 @@ const REQ = {
   droneLift: [lv => lv.drones >= 1, 'Prima compra la flotta di droni'],
   spider: [lv => lv.arm >= 1 && lv.pulley >= 1, 'Prima compra la carrucola magnetica'],
   spiderBoost: [lv => lv.spider >= 1, 'Prima compra il braccio a ragno'],
+  bays: [lv => lv.vehicle >= 1, 'Prima compra un mezzo più grande'],
+  trust: [lv => lv.helper >= 1, 'Prima assumi Beppino'],
 };
 const reqMsg = id => { const m = REQ[id][1]; return typeof m === 'function' ? m(S.lv) : m; };
 const VEH_DESC = ['', 'Cassone più lungo e più alto: 96 gomme a viaggio.', 'Camion con cassone da 7 metri e ruote gemellate: 350 gomme a viaggio e un bonus bello grosso.', 'Il bilico: motrice e semirimorchio da 13 metri e mezzo. 840 gomme a viaggio.'];
 // what this build sells: phases 1-3 (the rest of the shop arrives with the next versions)
-function shopSections() { const v4 = S.lv.vehicle >= 1; return [[1, 'A mano', ['shoes', 'gloves', 'grip']], [2, 'Il carrello', ['cart']], [3, 'Aiutanti e nastri', ['helper', 'helperCart', ...(v4 ? [] : ['vehicle']), 'belt', 'beltSpeed']], [4, 'Bracci meccanici, camion e bilico', ['arm', 'armSpeed', 'armGrab', ...(v4 ? ['vehicle'] : [])]], [5, 'Carrucola magnetica, fascioni e trituratore', ['pulley', 'magnet', 'cableSpeed', 'fascioni', 'shredder']], [6, 'Flotta di droni', ['drones', 'droneSpeed', 'droneLift']], [7, 'Braccio a ragno', ['spider', 'spiderBoost']]]; }
+function shopSections() { const v4 = S.lv.vehicle >= 1; return [[1, 'A mano', ['shoes', 'gloves', 'grip']], [2, 'Il carrello', ['cart']], [3, 'Aiutanti e nastri', ['helper', 'helperCart', 'trust', ...(v4 ? [] : ['vehicle']), 'belt', 'beltSpeed', 'bays']], [4, 'Bracci meccanici, camion e bilico', ['arm', 'armSpeed', 'armGrab', ...(v4 ? ['vehicle'] : [])]], [5, 'Carrucola magnetica, fascioni e trituratore', ['pulley', 'magnet', 'cableSpeed', 'fascioni', 'shredder']], [6, 'Flotta di droni', ['drones', 'droneSpeed', 'droneLift']], [7, 'Braccio a ragno', ['spider', 'spiderBoost']]]; }
 const SOLD = new Set(shopSections().flatMap(x => x[2]).concat(['vehicle']));
 const MAXV = { vehicle: VEH_MAX };
 function maxLv(id) { return Math.min(C.maxLevel(id), MAXV[id] ?? 99); }
@@ -1092,7 +1096,9 @@ function fmtVal(u, v) {
   if (u.id === 'shredder') return v ? (v === 1 ? '1 trituratore' : `${v} trituratori`) : 'nessuno';
   if (u.id === 'drones') return v ? `${v} droni` : 'nessuno';
   if (u.id === 'droneLift') return `${v} gomm${v > 1 ? 'e' : 'a'} per volo`;
-  if (u.id === 'spider') return v ? 'installato' : 'non installato';
+  if (u.id === 'spider') return v ? (v === 1 ? '1 ragno' : `${v} ragni`) : 'non installato';
+  if (u.id === 'trust') return v > 1 ? `+${Math.round((v - 1) * 100)}% a gomma` : 'paga normale';
+  if (u.id === 'bays') return v > 1 ? `${v} piazzole` : '1 piazzola';
   return String(v).replace('.', ',') + ' ' + u.unit;
 }
 const HELPER_NAMES = ['Beppino', 'Ottavio', 'Gino', 'Salvo', 'Tonino'];
@@ -1139,8 +1145,6 @@ function renderShop() {
       el.appendChild(btn); list.appendChild(el);
     }
   }
-  const nx = document.createElement('div'); nx.className = 'phase soon'; nx.innerHTML = `Il finale <small>non si compra</small>`; list.appendChild(nx);
-  const tease = document.createElement('div'); tease.className = 'card locked'; tease.innerHTML = `<div class="ic">🏁</div><div class="tx"><b>L'ultima gomma</b><span>Quando resta una sola gomma, tutto il piazzale si ferma. Quella la lanci tu.</span></div>`; list.appendChild(tease);
 }
 let shopOpen = false;
 function openShop() { if (!playing) return; if (build.on) exitBuild(); if (ctOpen) closeContracts(); shopOpen = true; renderShop(); $('shop').classList.remove('hidden'); if (document.pointerLockElement) document.exitPointerLock(); }
@@ -1181,7 +1185,7 @@ function tryGrab(rec) {
   const slid = mountain.lastSlide || 0;
   updateCorners(mountain.dirty); mountain.dirty.clear();
   sfx.grab(type === 3 ? 0 : type, 0);
-  if (slid > 0) { sfx.slide(slid); dust(rec.pos, 10); toast('Frana! Sono scese altre gomme', 1400); } else dust(rec.pos, 3);
+  if (slid > 0) { sfx.slide(slid); toast('Frana! Sono scese altre gomme', 1400); } // v1.0.2: no dust puff on a grab: the tire just comes out
   const toCart = holding();
   const slotI = toCart ? S.cart.length + reservedCart : S.hands.length + reservedHands;
   if (toCart) reservedCart++; else reservedHands++;
@@ -1213,11 +1217,30 @@ function tryThrow() {
 }
 function vanHasRoom(type) { return vanReady() && !!placeTire(virtFill(), LAYOUT.cap, !!C.TIRES[type].half); }
 // room for n more tires (counting the ones already flying in)
-function vanCanAccept(n) { return vanReady() && S.van.fill.length + V.pend.length + n <= LAYOUT.cap; }
+// Piazzole di carico: with 2+ bays, while the vehicle is away (or closing/arriving) another one loads at the second bay
+function bayCap() { return (C.UPG.bays.lv[S.lv.bays || 0] - 1) * LAYOUT.cap; }
+function bayAccept(n) { return !vanReady() && bayCap() > 0 && V.bayIn + V.bayPend + n <= bayCap(); }
+function vanCanAccept(n) { return (vanReady() && S.van.fill.length + V.pend.length + n <= LAYOUT.cap) || bayAccept(n); }
+const BAY2 = new THREE.Vector3(VAN_X + 2.6, 1.3, VAN_Z + 3.4);
+function launchToBay(type, from, q0, o = {}) {
+  V.bayPend++;
+  startFlight({ kind: 'bay', type, from: from.clone(), q0: q0.clone(), to: BAY2.clone(), q1: new THREE.Quaternion(), dur: o.dur || 0.5, arc: o.arc ?? 0.6, spin: 0.5, ease: 'line',
+    done: () => {
+      V.bayPend--; V.bayIn++; S.van.bay = (S.van.bay || 0) + 1;
+      const val = tireVal(type); S.money += val; S.stats.earned += val; S.stats.cleared++; S.stats.bySize[type]++;
+      if (o.auto) S.stats.auto = (S.stats.auto || 0) + 1; else S.stats.thrown++;
+      if (type === C.GOLD_ID) S.stats.gold++;
+      contractTick(type);
+      if (popT <= 0) { pop(BAY2.clone(), '+' + money(val), 'soft'); popT = 0.2; }
+      if (S.van.bay >= LAYOUT.cap) { S.van.bay -= LAYOUT.cap; const b = VEH.bonus * payMul(); S.money += b; S.stats.earned += b; S.stats.vans++; popHUD('+' + money(b)); }
+      checkMilestones(); updateHUD();
+    } });
+  return true;
+}
 // any tire into the braid: the player's throws, Beppino & co., the end of a belt. o.auto = soft bling, no tutorial step
 let popT = 0;
 function launchToVan(type, from, q0, o = {}) {
-  if (!vanReady()) return false;
+  if (!vanReady()) return bayAccept(1) ? launchToBay(type, from, q0, o) : false;
   const place = placeTire(virtFill(), LAYOUT.cap, !!C.TIRES[type].half);
   if (!place) return false;
   const p = { slot: place.slot, sub: place.sub, type }; V.pend.push(p);
@@ -1228,7 +1251,7 @@ function launchToVan(type, from, q0, o = {}) {
       V.pend.splice(V.pend.indexOf(p), 1);
       if (p.sub && S.van.fill[p.slot]) S.van.fill[p.slot].push(type); else S.van.fill[p.slot] = [type];
       rebuildCargo();
-      const val = C.TIRES[type].value; S.money += val; S.stats.earned += val; S.stats.cleared++; S.stats.bySize[type]++;
+      const val = tireVal(type); S.money += val; S.stats.earned += val; S.stats.cleared++; S.stats.bySize[type]++;
       if (o.auto) S.stats.auto = (S.stats.auto || 0) + 1; else S.stats.thrown++;
       if (type === C.GOLD_ID) S.stats.gold++;
       contractTick(type);
@@ -1247,7 +1270,7 @@ function checkMilestones() {
 }
 function vanFull() {
   if (V.state !== 'loading') return;
-  const bonus = VEH.bonus; S.money += bonus; S.stats.earned += bonus; S.stats.vans++;
+  const bonus = VEH.bonus * payMul(); S.money += bonus; S.stats.earned += bonus; S.stats.vans++;
   banner('Furgone pieno!', `+${money(bonus)} di consegna · torna tra poco`); sfx.coin(true); popHUD('+' + money(bonus));
   V.state = 'closing'; V.t = 0; saveNow();
 }
@@ -1282,7 +1305,7 @@ function updateVan(dt) {
     case 'leaving': { const k = Math.min(1, V.t / 3.4); van.position.x = VAN_X + (VAN_FAR - VAN_X) * k * k; if (k >= 1) { V.state = 'away'; V.t = 0; van.visible = false; V.engine = false; S.van.fill = []; S.van.trips++; rebuildCargo(); updateHUD(); } break; }
     case 'away': if (S.vehicle !== targetTier()) { setVehicle(targetTier()); van.visible = false; evictPieces(); updateHUD(); } if (V.t >= away) { V.state = 'arriving'; V.t = 0; van.visible = true; V.engine = true; sfx.horn(); } break;
     case 'arriving': { const k = Math.min(1, V.t / 4.2), e = 1 - Math.pow(1 - k, 2.4); van.position.x = VAN_FAR + (VAN_X - VAN_FAR) * e; if (Math.floor(V.t / 0.6) !== Math.floor((V.t - dt) / 0.6) && k < 0.95) sfx.beep(); if (k >= 1) { V.state = 'opening'; V.t = 0; V.engine = false; sfx.engineStop(vanDist(), van.userData.deep || 0); } break; }
-    case 'opening': V.doors = Math.min(1, V.t / 1.0); if (V.t >= 1.0) { V.state = 'loading'; V.t = 0; updateHUD(); } break;
+    case 'opening': V.doors = Math.min(1, V.t / 1.0); if (V.t >= 1.0) { V.state = 'loading'; V.t = 0; V.bayIn = 0; updateHUD(); } break;
   }
   G.poseDoors(van, V.doors);
   const moving = V.state === 'leaving' || V.state === 'arriving';
@@ -1541,16 +1564,16 @@ function saveNow() {
   const s = JSON.parse(JSON.stringify(S));
   for (const f of flights) {
     if (f.kind === 'grab') (f.toCart ? s.cart : s.hands).push(f.type);
-    else if (f.kind === 'throw') { if (f.p.sub && s.van.fill[f.p.slot]) s.van.fill[f.p.slot].push(f.type); else s.van.fill[f.p.slot] = [f.type]; s.money += C.TIRES[f.type].value; s.stats.cleared++; }
+    else if (f.kind === 'throw') { if (f.p.sub && s.van.fill[f.p.slot]) s.van.fill[f.p.slot].push(f.type); else s.van.fill[f.p.slot] = [f.type]; s.money += tireVal(f.type); s.stats.cleared++; }
     else if (f.kind === 'cut') { s.fascioni.ready++; if (!f.counted) s.stats.cleared++; }
-    else if (f.kind === 'store') { s.storage[f.bay] = Math.min(RACK.cap, s.storage[f.bay] + 1); s.money += C.TIRES[f.type].value; s.stats.cleared++; s.stats.earned += C.TIRES[f.type].value; }
+    else if (f.kind === 'store') { s.storage[f.bay] = Math.min(RACK.cap, s.storage[f.bay] + 1); s.money += tireVal(f.type); s.stats.cleared++; s.stats.earned += tireVal(f.type); }
   }
   // automation in transit (belts, hoppers, intake flights, the helpers' hands, rolling tires): seconds from the van, saved as delivered
   // the fascioni cutter: tires waiting / being cut are saved as cut fascioni
   s.fascioni.ready = Math.min(F5.FASC.READY_MAX + 4, s.fascioni.ready + fq.queue.length + fasc.transit().length);
   const transit = crew.transit().concat(arms.transit(), pulleys.transit(), shredders.transit(), drones.transit(), spiders.transit()); for (const p of belts.pieces) { for (const t of p.tires) transit.push(t.type); for (const t of p.hopper) transit.push(t); }
-  for (const f of flights) if (f.kind === 'intake' || f.kind === 'shred') transit.push(f.type);
-  for (const t of transit) { s.money += C.TIRES[t].value; s.stats.cleared++; s.stats.earned += C.TIRES[t].value; }
+  for (const f of flights) if (f.kind === 'intake' || f.kind === 'shred' || f.kind === 'bay') transit.push(f.type);
+  for (const t of transit) { s.money += tireVal(t); s.stats.cleared++; s.stats.earned += tireVal(t); }
   s.van.fill = s.van.fill.filter(Boolean);
   s.belts = belts.logic.serialize(); s.arms = arms.serialize(); s.pulleys = pulleys.serialize(); s.shredders = shredders.serialize(); s.spiders = spiders.serialize();
   return SV.save(localStorage, s);
@@ -1717,7 +1740,7 @@ if (TEST) {
     // v8
     pulleys, shredders, fasc, fq, F5, FBAY, CUT_ZONE, TABLE_ZONE, dropDest, shredFeed, cutterFeed, cutterRoom, tryNest, tryFeedCutter, tryShred, nearShredder, inCutZone, inTableZone, syncPulleys, footprintOf,
     // v1.0
-    drones, spiders, ending, DPAD, PAD_BOX, SPIDER, syncDrones, syncSpiders, beginFinale, haltAll, setRemaining, dronePick, droneDest, endStats, get halted() { return halted; },
+    drones, spiders, ending, DPAD, PAD_BOX, SPIDER, syncDrones, syncSpiders, syncArms, payMul, tireVal, bayAccept, get bayIn() { return V.bayIn; }, get dustN() { return dusts.length; }, renderShop, beginFinale, haltAll, setRemaining, dronePick, droneDest, endStats, get halted() { return halted; },
     stepMs(n = 60) { const t0 = performance.now(); for (let i = 0; i < n; i++) step(1 / 60); return (performance.now() - t0) / n; },
     get ctOpen() { return ctOpen; }, get FL() { return FL; }, setVehicleNow(t) { setVehicle(t); evictPieces(); updateHUD(); },
     clearBanners() { bannerQ.length = 0; bannerT = 0; $('banner').classList.remove('show'); toastT = 0; $('toast').classList.remove('show'); },

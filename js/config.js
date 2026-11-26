@@ -3,7 +3,7 @@
 // Costs in COSTS were calibrated with `node sim/economy.js --tune` and then frozen here.
 import { braidLayout } from './braid.js';
 
-export const VERSION = '0.1.0';
+export const VERSION = '1.0.2';
 export const TOTAL_TIRES = 1000000;
 
 /* ---------- tires ---------- */
@@ -13,7 +13,7 @@ export const TIRES = [
   { id: 1, key: 'r16', name: '16"', value: 1.5, p: 0.35, R: 0.315, ri: 0.205, w: 0.2 },
   { id: 2, key: 'r18', name: '18"', value: 2.0, p: 0.205, R: 0.34, ri: 0.228, w: 0.225 },
   { id: 3, key: 'scooter', name: 'Scooter', value: 0.6, p: 0.045, R: 0.2, ri: 0.12, w: 0.105, half: true },
-  { id: 4, key: 'gold', name: "d'oro", value: 30, p: 0.004, R: 0.315, ri: 0.205, w: 0.2, gold: true },
+  { id: 4, key: 'gold', name: "d'oro", value: 30, p: 0.013, R: 0.315, ri: 0.205, w: 0.2, gold: true },
 ];
 export const GOLD_ID = 4, SCOOTER_ID = 3;
 export const AVG_TIRE_VALUE = (() => {
@@ -73,51 +73,50 @@ export const UPGRADES = [
   { id: 'helperCart', phase: 3, icon: '👟', name: 'Ritmo della squadra', desc: 'Scarpe e guanti nuovi per gli aiutanti: camminano, rotolano e lanciano più svelti.', unit: 'x ritmo', lv: [1, 2.2] },
   // phase 4
   { id: 'belt', phase: 4, icon: '➰', machine: true, name: 'Nastri trasportatori', desc: 'Sblocca la costruzione: nastri dritti, curve e il caricatore che pesca dalla montagna. Ogni livello = un caricatore in più.', unit: 'caricatori', lv: [0, 1, 2, 3, 4], rate: 2.0 },
-  { id: 'beltSpeed', phase: 4, icon: '⏩', name: 'Motori dei nastri', desc: 'Nastri e caricatori più veloci.', unit: 'x velocità', lv: [1, 1.4, 1.8] },
+  { id: 'beltSpeed', phase: 4, icon: '⏩', name: 'Motori dei nastri', desc: 'Nastri e caricatori più veloci.', unit: 'x velocità', lv: [1, 1.5, 2.2] },
   // phase 5
   { id: 'arm', phase: 5, icon: '🦾', machine: true, name: 'Bracci meccanici', desc: 'Bracci idraulici arancioni da piazzare col blueprint ai piedi della montagna: pescano le gomme e le girano sul nastro, nel mezzo o nello stoccaggio. Ogni livello = un braccio in più.', unit: 'bracci', lv: [0, 1, 2, 3, 4], rate: 5 },
-  { id: 'armSpeed', phase: 5, icon: '⚙️', name: 'Servomotori', desc: 'Pompe e servomotori nuovi: i bracci girano e afferrano più svelti.', unit: 'x velocità', lv: [1, 1.5] },
-  { id: 'armGrab', phase: 5, icon: '🗜️', name: 'Pinza multipla', desc: 'Una pinza più lunga: ogni braccio infila più gomme a ogni presa.', unit: 'gomme a presa', lv: [1, 2, 3] },
+  { id: 'armSpeed', phase: 5, icon: '⚙️', name: 'Servomotori', desc: 'Pompe e servomotori nuovi: i bracci girano e afferrano più svelti.', unit: 'x velocità', lv: [1.6, 2.4] },
+  { id: 'armGrab', phase: 5, icon: '🗜️', name: 'Pinza multipla', desc: 'Una pinza più lunga: ogni braccio infila più gomme a ogni presa.', unit: 'gomme a presa', lv: [2, 3, 5] },
   // phase 6
-  { id: 'pulley', phase: 6, icon: '🧲', machine: true, name: 'Carrucola magnetica', desc: 'Due piloni d\'acciaio e un cavo teso sopra il piazzale: il carrello corre sul cavo e l\'elettromagnete solleva un grappolo di gomme grazie all\'acciaio che hanno dentro. Ogni livello = una linea in più.', unit: 'linee', lv: [0, 1, 2, 3], rate: 10 },
-  { id: 'magnet', phase: 6, icon: '🧲', name: 'Elettromagnete potenziato', desc: 'Bobina di rame più grossa: il magnete tira su più gomme a ogni presa.', unit: 'gomme a presa', lv: [4, 6, 10], mult: [1, 1.4, 1.8] },
-  { id: 'cableSpeed', phase: 6, icon: '⏩', name: 'Motore del carrello', desc: 'Un motore più spinto: il carrello corre sul cavo e il paranco cala più svelto.', unit: 'x velocità', lv: [1, 1.6] },
+  { id: 'pulley', phase: 6, icon: '🧲', machine: true, name: 'Carrucola magnetica', desc: 'Due piloni d\'acciaio e un cavo teso sopra il piazzale: il carrello corre sul cavo e l\'elettromagnete solleva un grappolo di gomme grazie all\'acciaio che hanno dentro. Ogni livello = una linea in più.', unit: 'linee', lv: [0, 1, 2, 3, 4], rate: 10 },
+  { id: 'magnet', phase: 6, icon: '🧲', name: 'Elettromagnete potenziato', desc: 'Bobina di rame più grossa: il magnete tira su più gomme a ogni presa.', unit: 'gomme a presa', lv: [12, 30, 60, 90] },
+  { id: 'cableSpeed', phase: 6, icon: '⏩', name: 'Motore del carrello', desc: 'Un motore più spinto: il carrello corre sul cavo e il paranco cala più svelto.', unit: 'x velocità', lv: [1.5, 2.3] },
   { id: 'fascioni', phase: 6, icon: '⭕', machine: true, name: 'Macchina dei fascioni', desc: 'Due dischi d\'acciaio tagliano i fianchi delle gomme: restano i fascioni, che infili a mano uno dentro l\'altro (tutun tutun) in pile da 10 per il fornitore.', unit: '', lv: [0, 1] },
   { id: 'shredder', phase: 6, icon: '⚙️', machine: true, name: 'Trituratore', desc: 'Bialbero da piazzare col blueprint: macina le gomme in granulato di gomma, venduto a peso (più di quanto vale la gomma intera). Ogni livello = un trituratore in più.', unit: 'trituratori', lv: [0, 1, 2] },
   // phase 7
-  { id: 'drones', phase: 7, icon: '🚁', machine: true, name: 'Flotta di droni', desc: 'Quadricotteri industriali che decollano dalla piazzola DRONI, pescano le gomme dalla montagna e le portano al mezzo, al trituratore o alla macchina dei fascioni. Ogni livello = 2 droni in più (fino a 8).', unit: 'droni', lv: [0, 2, 4, 6, 8], rate: 3 },
-  { id: 'droneSpeed', phase: 7, icon: '🔋', name: 'Batterie dei droni', desc: 'Batterie e motori nuovi: i droni volano più svelti.', unit: 'x velocità', lv: [1, 1.5] },
-  { id: 'droneLift', phase: 7, icon: '🪝', name: 'Gancio doppio', desc: 'Un gancio sotto la pancia più robusto: ogni drone porta due gomme alla volta.', unit: 'gomme per volo', lv: [1, 2] },
-  { id: 'spider', phase: 7, icon: '🕷️', machine: true, name: 'Braccio a ragno', desc: 'L\'evoluzione dei bracci: una torretta esagonale con quattro braccia arancioni che lavorano insieme e svuotano la montagna a ritmo sostenuto. Si piazza col blueprint (tasto 8).', unit: '', lv: [0, 1], rate: 26 },
-  { id: 'spiderBoost', phase: 7, icon: '🔥', name: 'Ragno turbo', desc: 'Pompe idrauliche maggiorate: le quattro braccia vanno molto più svelte.', unit: 'x velocità', lv: [1, 1.6] },
+  { id: 'drones', phase: 7, icon: '🚁', machine: true, name: 'Flotta di droni', desc: 'Quadricotteri industriali che decollano dalla piazzola DRONI, pescano le gomme dalla montagna e le portano al mezzo, al trituratore o alla macchina dei fascioni. Ogni livello = 2 droni in più (fino a 16).', unit: 'droni', lv: [0, 2, 4, 6, 8, 10, 12, 14, 16], rate: 3 },
+  { id: 'droneSpeed', phase: 7, icon: '🔋', name: 'Batterie dei droni', desc: 'Batterie e motori nuovi: i droni volano più svelti.', unit: 'x velocità', lv: [1.8, 2.6] },
+  { id: 'droneLift', phase: 7, icon: '🪝', name: 'Gancio a grappolo', desc: 'Un gancio sotto la pancia più robusto: ogni drone porta una pila di 8 gomme alla volta invece di 4.', unit: 'gomme per volo', lv: [4, 8] },
+  { id: 'spider', phase: 7, icon: '🕷️', machine: true, name: 'Braccio a ragno', desc: 'L\'evoluzione dei bracci: una torretta esagonale con quattro braccia arancioni che lavorano insieme e svuotano la montagna a ritmo sostenuto. Si piazza col blueprint (tasto 8). Ogni livello ne aggiunge un altro (fino a 4).', unit: 'ragni', lv: [0, 1, 2, 3, 4], rate: 26 },
+  { id: 'spiderBoost', phase: 7, icon: '🔥', name: 'Ragno turbo', desc: 'Pompe idrauliche maggiorate: le quattro braccia vanno molto più svelte e prendono 4 gomme a presa.', unit: 'x velocità', lv: [1, 1.6, 2.2] },
   // vehicles + loading bays
   { id: 'vehicle', phase: 3, icon: '🚚', machine: true, name: 'Mezzi più grandi', desc: 'Furgone grande, poi il camion e infine il bilico: più gomme a viaggio e un bonus di consegna più grosso.', unit: '', lv: [0, 1, 2, 3] },
-  { id: 'bays', phase: 4, icon: '🅿️', name: 'Piazzole di carico', desc: 'Un altro mezzo si carica mentre il primo è via.', unit: 'piazzole', lv: [1, 2, 3, 4] },
+  { id: 'bays', phase: 4, icon: '🅿️', name: 'Piazzole di carico', desc: 'Una seconda piazzola accanto al mezzo: mentre il mezzo è via a scaricare, le gomme si accumulano lì e nessuna macchina resta ferma.', unit: 'piazzole', lv: [1, 2, 3, 4] },
+  // v1.0.2: more money for every tire
+  { id: 'trust', phase: 3, icon: '🤝', name: 'Cliente di fiducia', desc: 'Lo smaltitore ti conosce ormai: ti paga di più per ogni gomma che consegni, triturata o stoccata (e anche il bonus dei mezzi).', unit: 'x paga', lv: [1, 1.25, 1.5, 1.8, 2.2, 2.7, 3.5] },
 ];
 export const UPG = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
 
 // The designed order of purchases (what a normal player buys, and roughly when, in minutes).
 // The simulator buys in this order; `--tune` derives the costs from the target minute.
 export const PLAN = [
-  ['shoes', 2.5], ['gloves', 5], ['grip', 8], ['shoes', 11.5], ['grip', 15],
-  ['cart', 20], ['shoes', 25], ['cart', 30], ['grip', 36], ['cart', 42], ['cart', 50],
-  ['helper', 56], ['helper', 62], ['vehicle', 68], ['helper', 74], ['helperCart', 80], ['helper', 86],
-  ['belt', 92], ['belt', 98], ['bays', 104], ['beltSpeed', 110], ['belt', 116], ['belt', 122],
-  ['arm', 129], ['vehicle', 136], ['arm', 142], ['beltSpeed', 148], ['arm', 154], ['armSpeed', 160],
-  ['pulley', 166], ['arm', 172], ['bays', 178], ['magnet', 184], ['pulley', 191], ['magnet', 198],
-  ['drones', 204], ['drones', 211], ['vehicle', 218], ['pulley', 225], ['droneSpeed', 232], ['drones', 238],
-  ['spider', 244], ['bays', 256], ['drones', 268], ['helper', 282], ['spiderBoost', 296],
+  ['shoes', 1.7], ['gloves', 3.4], ['grip', 5.1], ['shoes', 6.8], ['grip', 8.5], ['cart', 10.8],
+  ['shoes', 13.1], ['cart', 15.4], ['grip', 17.7], ['cart', 20], ['cart', 22.3], ['helper', 25.1],
+  ['trust', 27.9], ['helper', 30.7], ['vehicle', 33.5], ['helper', 36.3], ['helperCart', 39.1], ['helper', 41.9],
+  ['belt', 44.7], ['belt', 47.7], ['bays', 50.7], ['beltSpeed', 53.7], ['belt', 56.7], ['trust', 59.7],
+  ['belt', 62.7], ['beltSpeed', 65.7], ['arm', 68.7], ['vehicle', 71.7], ['arm', 74.7], ['armSpeed', 77.7],
+  ['arm', 80.7], ['armGrab', 83.7], ['arm', 86.7], ['bays', 89.7], ['armGrab', 92.7], ['pulley', 95.7],
+  ['magnet', 98.7], ['fascioni', 101.7], ['pulley', 104.7], ['trust', 107.7], ['shredder', 110.7], ['cableSpeed', 113.7],
+  ['pulley', 116.7], ['magnet', 119.7], ['vehicle', 122.7], ['pulley', 125.7], ['shredder', 128.7], ['drones', 133.7],
+  ['drones', 138.7], ['droneLift', 143.7], ['drones', 148.7], ['spider', 153.7], ['droneSpeed', 158.7], ['drones', 163.7],
+  ['spiderBoost', 168.7], ['bays', 173.7], ['spider', 178.7], ['drones', 183.7], ['magnet', 188.7], ['helper', 193.7],
+  ['trust', 204.7], ['drones', 215.7], ['spider', 226.7], ['spiderBoost', 237.7], ['drones', 248.7], ['trust', 259.7],
+  ['spider', 270.7], ['drones', 281.7], ['trust', 292.7],
 ];
 
-// COSTS: frozen output of `node sim/economy.js --tune` (rounded). One array per upgrade, per level.
-export const COSTS = {"shoes":[15,60,120],"gloves":[20],"grip":[40,55,200],"cart":[85,160,220,280],"helper":[220,400,600,1200,200000],"helperCart":[750],"vehicle":[550,8000,45000],"belt":[1600,2200,4000,4500],"bays":[2800,25000,150000],"beltSpeed":[3500,12000],"arm":[6000,10000,14000,22000],"armSpeed":[16000],"pulley":[18000,30000,60000],"magnet":[28000,40000],"drones":[35000,45000,70000,160000],"droneSpeed":[60000],"spider":[75000],"spiderBoost":[180000]};
-
-// extras outside the simulated plan (bonus upgrades, not needed to finish in 5-6 h)
-COSTS.armGrab = [12000, 26000];
-COSTS.cableSpeed = [24000];
-COSTS.fascioni = [15000];
-COSTS.shredder = [20000, 45000];
-COSTS.droneLift = [90000];
+// COSTS: frozen output of `node sim/economy.js --tune` (v1.0.2 rebalance: every upgrade is in the plan, ~5 h to the millionth tire).
+export const COSTS = {"shoes":[10,25,70],"gloves":[15],"grip":[28,30,95],"cart":[55,85,90,95],"helper":[120,220,300,550,85000],"trust":[180,4000,18000,180000,280000,380000],"vehicle":[280,6000,30000],"helperCart":[350],"belt":[600,1500,4500,4500],"bays":[2000,15000,70000],"beltSpeed":[3000,5500],"arm":[6000,12000,14000,15000],"armSpeed":[12000],"armGrab":[12000,14000],"pulley":[16000,16000,22000,30000],"magnet":[16000,22000,80000],"fascioni":[16000],"shredder":[22000,35000],"cableSpeed":[22000],"drones":[55000,55000,60000,70000,75000,250000,280000,350000],"droneLift":[60000],"spider":[60000,75000,250000,300000],"droneSpeed":[70000],"spiderBoost":[70000,250000]};
 
 export function costOf(id, level) { const c = COSTS[id]; return c && level < c.length ? c[level] : null; }
 export function maxLevel(id) { return UPG[id].lv.length - 1; }
@@ -139,20 +138,32 @@ export function stats(lvIn) {
   const carry = hands + cart;
   const trip = 2 * PLAYER.walkDist / walk + carry * (grab + PLAYER.aimOverhead + PLAYER.throwInterval);
   const manual = PLAYER.efficiency * carry / trip;
+  // v1.0.2: machine rates measured in the real game (test calibration, 60 s runs with the machine well placed), tires/s
+  const RATE = {
+    helper: [0, 0.17, 0.38, 0.55, 0.78, 0.97],    // floor(n/2) rolling pairs + a hand carrier when n is odd (measured)
+    helperCart: [1, 1.85],
+    belt: 2.85, beltSpeed: [1, 1.4, 1.75],       // per intake (belt speed raises the line's capacity)
+    arm: 0.83, armSpeed: [1, 1.4], armGrab: [1, 1.2, 1.45],
+    pulley: [1.2, 2.5, 5.0, 7.0], cableSpeed: [1, 1.2], // per line, by magnet level
+    drone: [0.53, 1.07], droneSpeed: [1, 1.3],   // per drone, by hook level
+    spider: [2.55, 3.67, 4.6],                   // per spider, by turbo level (with fast belts)
+  };
+  const lvl = id => Math.min(lv[id], maxLevel(id));
   const auto =
-    L('helper') * UPG.helper.rate * L('helperCart') +
-    L('belt') * UPG.belt.rate * L('beltSpeed') +
-    L('arm') * UPG.arm.rate * L('armSpeed') +
-    L('pulley') * UPG.pulley.rate * UPG.magnet.mult[Math.min(lv.magnet, 2)] +
-    L('drones') * UPG.drones.rate * L('droneSpeed') +
-    L('spider') * UPG.spider.rate * L('spiderBoost');
+    RATE.helper[lvl('helper')] * RATE.helperCart[lvl('helperCart')] +
+    L('belt') * RATE.belt * RATE.beltSpeed[lvl('beltSpeed')] +
+    L('arm') * RATE.arm * RATE.armSpeed[lvl('armSpeed')] * RATE.armGrab[lvl('armGrab')] +
+    L('pulley') * RATE.pulley[lvl('magnet')] * RATE.cableSpeed[lvl('cableSpeed')] +
+    L('drones') * RATE.drone[lvl('droneLift')] * RATE.droneSpeed[lvl('droneSpeed')] +
+    L('spider') * RATE.spider[lvl('spiderBoost')];
   const veh = VEHICLES[L('vehicle')], bays = L('bays');
   const prod = manual + auto;
   // a vehicle away is lost loading time unless another bay covers it
   // production is shared between the bays; each bay loses `away` seconds per vehicle
-  const vehCap = bays * veh.cap / (veh.cap / Math.max(prod / bays, 1e-9) + veh.away);
+  // v1.0.2: with a 2nd bay the tires pile up there while the vehicle is away: no loss as long as that buffer is big enough
+  const vehCap = bays > 1 && prod * veh.away <= (bays - 1) * veh.cap ? Infinity : bays * veh.cap / (veh.cap / Math.max(prod / bays, 1e-9) + veh.away);
   const rate = Math.min(prod, vehCap);
-  return { hands, cart, carry, walk, grab, manual, auto, prod, rate, veh, bays, vehLimited: vehCap < prod };
+  return { hands, cart, carry, walk, grab, manual, auto, prod, rate, veh, bays, vehLimited: vehCap < prod, pay: L('trust') };
 }
 
 // small milestones for the HUD banner + the timeline

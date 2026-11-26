@@ -19,12 +19,17 @@ function segDist(px, pz, ax, az, bx, bz) { const dx = bx - ax, dz = bz - az, L2 
 // upright tire (axis horizontal) facing along `yaw`, rolled by `ang`
 function uprightQuat(out, dirx, dirz, ang) { _a.set(dirz, 0, -dirx).normalize(); _q.setFromUnitVectors(UPV, _a); _q2.setFromAxisAngle(UPV, ang); return out.copy(_q).multiply(_q2); }
 
+const LANE_GAP = 1.5; // m between two parallel rolling lanes
 export class Crew {
   // ctx: { scene, buildWorker, tireMesh(type), freeMesh(m), TIRES, stations() -> {F,B,dir}, take(x,z,R) -> {type,pos,quat}|null,
   //        canAccept(n), launch(type,pos,quat) -> bool, player() -> {x,z}, sfx, att(x,z) -> 0..1, spawn(i) -> {x,z} }
   constructor(ctx) { this.ctx = ctx; this.list = []; this.rolls = []; this.stare = false; this.stareHold = 0; this.blocking = false; this.delivered = 0; this.sighs = 0; this.pickT = 0; this.stT = 0; this.t = 0; this.speed = 1; this.st = null; }
   get n() { return this.list.length; }
+  // v1.0.2: a rolling lane needs only two people (one at the pile, one at the van): floor(n/2) pairs side by side,
+  // and with an odd crew the last one carries by hand (one tire per hand) on his own lane
   get mode() { return this.n >= 2 ? 'relay' : this.n === 1 ? 'walk' : 'none'; }
+  get pairs() { return Math.floor(this.n / 2); }
+  roles() { return this.list.map(h => h.role); }
   setCount(n, speed = 1) {
     this.speed = speed;
     while (this.list.length < n) {
@@ -38,23 +43,35 @@ export class Crew {
   // work rhythm (helperCart upgrade): faster feet and hands
   get mul() { return 1 + (this.speed - 1) * 0.6; }
   layout() {
-    const s = this.ctx.stations(); this.st = s; const n = this.n;
+    const s = this.ctx.stations(); this.st = s; const n = this.n, pairs = this.pairs, lanes = pairs + (n % 2), px = -s.dir.z, pz = s.dir.x;
     this.list.forEach((h, i) => {
-      if (n === 1) h.station = null;
-      else { const k = i / (n - 1); h.station = { x: s.F.x + (s.B.x - s.F.x) * k, z: s.F.z + (s.B.z - s.F.z) * k }; }
+      const lane = Math.floor(i / 2), solo = i >= pairs * 2, off = (lane - (lanes - 1) / 2) * LANE_GAP;
+      h.lane = lane; h.off = { x: px * off, z: pz * off };
+      if (solo) { h.role = 'solo'; h.partner = null; h.station = null; }
+      else if (i % 2 === 0) { h.role = 'from'; h.partner = this.list[i + 1]; h.station = { x: s.F.x + h.off.x, z: s.F.z + h.off.z }; }
+      else { h.role = 'to'; h.partner = this.list[i - 1]; h.station = { x: s.B.x + h.off.x, z: s.B.z + h.off.z }; }
     });
   }
   inPipe() { let k = this.rolls.length; for (const h of this.list) k += h.carry.length + h.queue.length; return k; }
   // world position of the helper's hands (where a carried tire sits)
-  handPos(h, out, k = 0) { const fx = Math.cos(h.yaw), fz = -Math.sin(h.yaw); return out.set(h.x + fx * 0.42, 1.0 * h.look.height + k * 0.24, h.z + fz * 0.42); }
+  handPos(h, out, k = 0, n = 1, type = 1) {
+    // the gripping hand's wrist (world), then the tire hangs from it: hand on the top of the tread, clear of the leg
+    const a = this.carryArm(h, k), T = this.ctx.TIRES[type] || this.ctx.TIRES[1];
+    a.wr.getWorldPosition(out);
+    const lx = out.x - h.x, lz = out.z - h.z, fx = Math.cos(h.yaw), fz = -Math.sin(h.yaw);
+    const side = lx * fz - lz * fx >= 0 ? 1 : -1, sx = fz * side, sz = -fx * side; // unit vector to that flank
+    const along = lx * fx + lz * fz, lat = Math.max(Math.abs(lx * sx + lz * sz), 0.3 * h.look.height + T.w * 0.5);
+    return out.set(h.x + fx * along + sx * lat, out.y - 0.07 - (T.R - 0.035), h.z + fz * along + sz * lat);
+  }
+  // tire 0 goes in the right hand, tire 1 in the left
+  carryArm(h, k) { const R = h.U.rig; return R.arms.find(a => a.s === (k ? 1 : -1)) || R.arms[k ? 0 : 1]; }
   // is the player standing in their way?
   checkBlock() {
     const p = this.ctx.player();
-    if (this.n >= 2) {
-      for (let i = 0; i < this.n - 1; i++) { const a = this.list[i], b = this.list[i + 1], r = segDist(p.x, p.z, a.x, a.z, b.x, b.z); if (r.d < 0.75 && r.t > 0.04 && r.t < 0.96) return true; }
-      return false;
+    for (const a of this.list) {
+      if (a.role === 'from' && a.partner) { const b = a.partner, r = segDist(p.x, p.z, a.x, a.z, b.x, b.z); if (r.d < 0.75 && r.t > 0.04 && r.t < 0.96) return true; }
+      else if (a.role === 'solo') { if (!a.moving) { if (Math.hypot(p.x - a.x, p.z - a.z) < 0.9) return true; } else { const fx = Math.cos(a.yaw), fz = -Math.sin(a.yaw); if (segDist(p.x, p.z, a.x, a.z, a.x + fx * 1.7, a.z + fz * 1.7).d < 0.7) return true; } }
     }
-    if (this.n === 1) { const h = this.list[0]; if (!h.moving) return Math.hypot(p.x - h.x, p.z - h.z) < 0.9; const fx = Math.cos(h.yaw), fz = -Math.sin(h.yaw); return segDist(p.x, p.z, h.x, h.z, h.x + fx * 1.7, h.z + fz * 1.7).d < 0.7; }
     return false;
   }
   update(dt) {
@@ -63,7 +80,8 @@ export class Crew {
     this.blocking = this.checkBlock();
     if (this.blocking) { if (!this.stare) this.stare = true; this.stareHold = 0.5; }
     else if (this.stare) { this.stareHold -= dt; if (this.stareHold <= 0) { this.stare = false; this.sighs++; const h = this.list[0]; this.ctx.sfx.sigh(this.ctx.att(h.x, h.z)); } }
-    if (!this.stare) { if (this.n === 1) this.walker(this.list[0], dt); else this.relay(dt); this.updateRolls(dt); }
+    if (!this.list[0].role) this.layout();
+    if (!this.stare) { for (const h of this.list) if (h.role === 'solo') this.walker(h, dt); if (this.pairs) this.relay(dt); this.updateRolls(dt); }
     for (const h of this.list) { this.pose(h, dt); this.placeCarry(h); }
   }
   // ---------- movement ----------
@@ -77,16 +95,16 @@ export class Crew {
   start(h, act, dur) { h.act = act; h.actT = 0; h.actD = dur; h.fired = false; }
   // ---------- 1 helper: carry two at a time ----------
   walker(h, dt) {
-    const s = this.st, spd = 2.3 * (1 + (this.speed - 1) * 0.45);
+    const s = this.st, spd = 2.3 * (1 + (this.speed - 1) * 0.45), o = h.off || { x: 0, z: 0 };
     if (h.act) { this.tickAct(h, dt); return; }
     if (h.phase === 'toPile') {
-      if (this.moveTo(h, s.F.x, s.F.z, dt, spd)) {
+      if (this.moveTo(h, s.F.x + o.x, s.F.z + o.z, dt, spd)) {
         this.turn(h, Math.atan2(-s.dir.z, s.dir.x), dt, 8);
         if (h.carry.length < 2 && this.ctx.canAccept(h.carry.length + 1)) this.start(h, 'pick', 0.55 / this.mul);
         else if (h.carry.length) h.phase = 'toVan';
       }
     } else {
-      if (this.moveTo(h, s.B.x, s.B.z, dt, spd)) {
+      if (this.moveTo(h, s.B.x + o.x, s.B.z + o.z, dt, spd)) {
         this.turn(h, Math.atan2(-(s.rear.z - h.z), s.rear.x - h.x), dt, 8);
         if (h.carry.length) { if (this.ctx.canAccept(1)) this.start(h, 'throw', 0.42 / this.mul); }
         else h.phase = 'toPile';
@@ -95,18 +113,18 @@ export class Crew {
   }
   // ---------- 2+ helpers: rolling relay ----------
   relay(dt) {
-    const n = this.n, rate = n * 0.35 * this.speed; this.pickT -= dt;
-    for (let i = 0; i < n; i++) {
-      const h = this.list[i];
+    const rate = 2 * 0.35 * this.speed; // one pair
+    for (const h of this.list) {
+      if (h.role !== 'from' && h.role !== 'to') continue;
       if (h.act) { this.tickAct(h, dt); continue; }
       if (h.station && !this.moveTo(h, h.station.x, h.station.z, dt, 2.6 * this.mul)) continue;
-      const nx = i < n - 1 ? this.list[i + 1] : null, s = this.st;
+      const nx = h.role === 'from' ? h.partner : null, s = this.st;
       if (h.carry.length) {
         if (nx) { this.turn(h, Math.atan2(-(nx.z - h.z), nx.x - h.x), dt); if (nx.queue.length + this.rollsTo(nx) < 2) this.start(h, 'push', Math.min(0.42, 0.5 / rate + 0.1) / this.mul); }
         else { this.turn(h, Math.atan2(-(s.rear.z - h.z), s.rear.x - h.x), dt); if (this.ctx.canAccept(1)) this.start(h, 'throw', 0.4 / this.mul); }
       } else if (h.queue.length) { const q = h.queue[0]; this.turn(h, Math.atan2(-(q.z - h.z), q.x - h.x), dt); this.start(h, 'catch', Math.min(0.5, 0.6 / rate + 0.12) / this.mul); }
-      else if (i === 0) { this.turn(h, Math.atan2(-s.dir.z, s.dir.x), dt); if (this.pickT <= 0 && this.ctx.canAccept(this.inPipe() + 1)) { this.start(h, 'pick', Math.min(0.55, 0.8 / rate) / this.mul); this.pickT = 1 / rate; } }
-      else { const pv = this.list[i - 1]; this.turn(h, Math.atan2(-(pv.z - h.z), pv.x - h.x), dt, 3); }
+      else if (h.role === 'from') { h.pickT = (h.pickT || 0) - dt; this.turn(h, Math.atan2(-s.dir.z, s.dir.x), dt); if (h.pickT <= 0 && this.ctx.canAccept(this.inPipe() + 1)) { this.start(h, 'pick', Math.min(0.55, 0.8 / rate) / this.mul); h.pickT = 1 / rate; } }
+      else { const pv = h.partner; this.turn(h, Math.atan2(-(pv.z - h.z), pv.x - h.x), dt, 3); }
     }
   }
   rollsTo(h) { let k = 0; for (const r of this.rolls) if (r.to === h) k++; return k; }
@@ -118,12 +136,12 @@ export class Crew {
   fire(h) {
     const C = this.ctx, s = this.st;
     if (h.act === 'pick') {
-      const got = C.take(s.F.x + s.dir.x * 1.1, s.F.z + s.dir.z * 1.1, 3.2);
+      const o = h.off || { x: 0, z: 0 }, got = C.take(s.F.x + o.x + s.dir.x * 1.1, s.F.z + o.z + s.dir.z * 1.1, 3.2);
       if (!got) { this.idleReason = 'montagna'; return; }
       const m = C.tireMesh(got.type); m.position.copy(got.pos); h.carry.push({ type: got.type, mesh: m, lift: 0 });
       C.sfx.grab && C.sfx.grab(got.type === 3 ? 0 : Math.min(2, got.type), 0, C.att(h.x, h.z));
     } else if (h.act === 'push') {
-      const c = h.carry.pop(); if (!c) return; const nx = this.list[h.i + 1];
+      const nx = h.partner; if (!nx) return; const c = h.carry.pop(); if (!c) return;
       const fx = h.x + Math.cos(h.yaw) * 0.55, fz = h.z - Math.sin(h.yaw) * 0.55;
       const dx = nx.x - fx, dz = nx.z - fz, d = Math.hypot(dx, dz), stop = Math.max(0, d - 0.6);
       const tx = fx + dx / d * stop, tz = fz + dz / d * stop, sp = 4.2 * this.mul;
@@ -149,11 +167,14 @@ export class Crew {
   }
   // tires in the hands follow the body; one being caught hops up from the foot first
   placeCarry(h) {
+    // v1.0.2: one tire per hand, hanging upright along the flanks (tire 0 = right hand, tire 1 = left hand)
+    const n = h.carry.length; if (n) h.g.updateMatrixWorld(true);
+    const fx = Math.cos(h.yaw), fz = -Math.sin(h.yaw);
     h.carry.forEach((c, j) => {
-      const target = this.handPos(h, _hp, j);
+      const target = this.handPos(h, _hp, j, n, c.type);
       if (c.from) { c.fromT += 1 / 60; const k = Math.min(1, h.act === 'catch' ? (h.actT / h.actD - 0.6) / 0.4 : 1); const kk = Math.max(0, k); c.mesh.position.lerpVectors(c.from, target, kk); c.mesh.position.y += Math.sin(kk * Math.PI) * 0.35; if (kk >= 1) c.from = null; }
       else c.mesh.position.copy(target);
-      uprightQuat(c.mesh.quaternion, Math.cos(h.yaw), -Math.sin(h.yaw), 0);
+      uprightQuat(c.mesh.quaternion, fx, fz, 0);
       if (h.act === 'pick' && !c.from && j === h.carry.length - 1) { const k = h.actT / h.actD; c.mesh.position.y = 0.4 + (target.y - 0.4) * Math.max(0, (k - 0.55) / 0.45); }
     });
   }
@@ -166,7 +187,10 @@ export class Crew {
     R.legs.forEach((l, i) => { l.hip.rotation.set(0, 0, i ? -0.04 : 0.04); l.knee.rotation.set(0, 0, 0); });
     R.arms.forEach((a, i) => { a.sh.rotation.copy(rest.arms[i].sh); a.el.rotation.copy(rest.arms[i].el); a.wr.rotation.copy(rest.arms[i].wr); });
     const t = this.t, carrying = h.carry.length > 0, k = h.act ? Math.min(1, h.actT / h.actD) : 0, sk = Math.sin(k * Math.PI);
-    const armsHold = () => R.arms.forEach(a => { a.sh.rotation.set(-0.85, 0, a.s * 0.32); a.el.rotation.set(-0.55, 0, 0); });
+    // carrying: the loaded arm hangs straight down, a little out from the flank; an empty arm swings loosely
+    const armsHold = () => { const n = h.carry.length; R.arms.forEach(a => { const loaded = a === this.carryArm(h, 0) || (n > 1 && a === this.carryArm(h, 1));
+      if (loaded) { a.sh.rotation.set(0.02, 0, a.s * 0.26); a.el.rotation.set(-0.06, 0, a.s * -0.08); a.wr.rotation.set(0, 0, 0); }
+      else { const sw = h.moving ? Math.sin(h.walkPh) * 0.35 : 0; a.sh.rotation.set(sw, 0, a.s * 0.1); a.el.rotation.set(-0.25, 0, 0); } }); };
     let lookYaw = 0;
     if (this.stare) {
       U.anim(t);
@@ -204,7 +228,7 @@ export class Crew {
     } else {
       U.anim(t); if (carrying) armsHold();
       // waiting for the next tire: glance up the line
-      if (this.n >= 2 && h.i > 0) { const pv = this.list[h.i - 1]; lookYaw = wrap(Math.atan2(-(pv.z - h.z), pv.x - h.x) - h.yaw) * 0.6; }
+      if (h.role === 'to' && h.partner) { const pv = h.partner; lookYaw = wrap(Math.atan2(-(pv.z - h.z), pv.x - h.x) - h.yaw) * 0.6; }
     }
     const spineT = clamp(lookYaw * 0.35, -0.5, 0.5), headT = clamp(lookYaw - spineT, -1.15, 1.15);
     const a = Math.min(1, dt * (this.stare ? 9 : 4)); h.spineYaw += (spineT - h.spineYaw) * a; h.headYaw += (headT - h.headYaw) * a;
@@ -212,6 +236,6 @@ export class Crew {
   }
   // what's in transit (for the save: these tires count as delivered, they are seconds from the van)
   transit() { const out = []; for (const r of this.rolls) out.push(r.type); for (const h of this.list) for (const c of h.carry.concat(h.queue)) out.push(c.type); return out; }
-  state() { return { n: this.n, mode: this.mode, stare: this.stare, blocking: this.blocking, delivered: this.delivered, rolls: this.rolls.length, sighs: this.sighs, pipe: this.inPipe(), pos: this.list.map(h => ({ x: h.x, z: h.z, act: h.act, carry: h.carry.length, q: h.queue.length, head: h.headYaw })) }; }
+  state() { return { n: this.n, mode: this.mode, roles: this.roles(), pairs: this.pairs, lanes: this.list.map(h => h.lane), stare: this.stare, blocking: this.blocking, delivered: this.delivered, rolls: this.rolls.length, sighs: this.sighs, pipe: this.inPipe(), pos: this.list.map(h => ({ x: h.x, z: h.z, act: h.act, carry: h.carry.length, q: h.queue.length, head: h.headYaw })) }; }
 }
 const _hp = new THREE.Vector3();

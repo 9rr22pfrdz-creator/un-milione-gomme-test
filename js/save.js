@@ -21,7 +21,7 @@ export function defaultState() {
     cart: [],                 // tire type ids stacked on the trolley (stay on it when it is parked)
     cartHeld: true,           // trolley in your hands (pushing) or parked somewhere in the yard
     cartPos: null,            // where it is parked: {x, z, rot}
-    van: { fill: [], trips: 0 }, // fill: per slot [type] or [3,3] for two scooter tires
+    van: { fill: [], trips: 0, bay: 0 }, // fill: per slot [type] or [3,3] for two scooter tires
     vehicle: 0,               // tier of the vehicle at the bay (the upgrade lv.vehicle swaps it in on the next trip)
     belts: [],                // placed conveyor pieces [{type, gx, gz, rot}] (helpers = lv.helper / lv.helperCart)
     arms: [],                 // v7: placed robotic arms [{gx, gz, rot}] (how many = lv.arm; speed / grab = lv.armSpeed / lv.armGrab)
@@ -68,6 +68,7 @@ export function normalize(raw) {
   if (isObj(raw.van)) {
     if (Array.isArray(raw.van.fill)) s.van.fill = raw.van.fill.filter(f => Array.isArray(f) && f.length >= 1 && f.length <= 2).map(f => tireArr(f, 2)).filter(f => f.length);
     s.van.trips = Math.max(0, num(raw.van.trips, 0) | 0);
+    s.van.bay = Math.max(0, Math.min(5000, num(raw.van.bay, 0) | 0)); // v1.0.2: tires loaded at the second bay
   }
   // v6: vehicle at the bay (never above the bought tier) + placed belts (valid types, integer cells, one piece per cell)
   s.vehicle = Number.isInteger(raw.vehicle) ? Math.max(0, Math.min(raw.vehicle, s.lv.vehicle)) : s.lv.vehicle;
@@ -94,7 +95,7 @@ export function normalize(raw) {
   s.contracts = normalizeContracts(raw.contracts);
   // v8: Fase 5 (v7 saves have none of these: defaults)
   { const taken = new Set(s.belts.map(b => b.gx + ',' + b.gz).concat(s.arms.map(a => a.gx + ',' + a.gz)));
-    s.pulleys = normalizePulleys(raw.pulleys, [0, 1, 2, 3][s.lv.pulley] || 0, taken);
+    s.pulleys = normalizePulleys(raw.pulleys, UPG.pulley.lv[s.lv.pulley] || 0, taken);
     s.shredders = normalizeShredders(raw.shredders, [0, 1, 2][s.lv.shredder] || 0, taken); }
   // v1.0: the spider arm (integer cells, never more than bought) and the finale flag
   if (Array.isArray(raw.spiders)) {

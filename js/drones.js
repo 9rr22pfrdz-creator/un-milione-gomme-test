@@ -8,9 +8,9 @@ import { merge, M, box, cyl, cvs } from './gfx.js';
 
 export const DPAD = { x: 19, z: -6, w: 5.2, d: 5.2 };
 export const PAD_BOX = { x0: DPAD.x - DPAD.w / 2, x1: DPAD.x + DPAD.w / 2 + 0.9, z0: DPAD.z - DPAD.d / 2, z1: DPAD.z + DPAD.d / 2 };
-const SPOTS = []; for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) SPOTS.push({ x: DPAD.x - 1.8 + c * 1.2, z: DPAD.z - 1.2 + r * 2.4 });
+const SPOTS = []; for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) SPOTS.push({ x: DPAD.x - 1.8 + c * 1.2, z: DPAD.z - 2.4 + r * 1.6 });
 export const padSpot = i => SPOTS[i % SPOTS.length];
-const REST_Y = 0.2, CRUISE = 7.2, VMAX = 8.5;
+const REST_Y = 0.2, CRUISE = 5.0, VMAX = 9.5;
 const wrap = a => ((a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
 
 function padTexture() {
@@ -99,6 +99,7 @@ const _a = new THREE.Vector3(), _d = new THREE.Vector3();
 export class DroneWorld {
   // host: { scene, sfx, att(x,z), tireMesh(type), freeMesh(m), pick(drone) -> {x,y,z}|null, take(drone, at, n) -> [types],
   //         dest(drone, n) -> {kind,x,y,z,...}|null, release(drone, type, pos, dest) -> bool }
+  get agile() { return Math.max(1, this.speed / 1.8); } // better batteries: snappier, not only a higher top speed
   constructor(host) { this.host = host; this.list = []; this.speed = 1; this.lift = 1; this.halted = false; this.delivered = 0; this.hum = 0; this.t = 0; }
   count() { return this.list.length; }
   setCount(n) {
@@ -122,10 +123,10 @@ export class DroneWorld {
     else { d.status = !pk ? 'nomountain' : 'nodest'; this.goHome(d); }
   }
   // smooth steering toward a point; returns the remaining distance
-  steer(d, x, y, z, dt, vmax, soft = 1.6) {
+  steer(d, x, y, z, dt, vmax, soft = 2.4) {
     _d.set(x - d.p.x, y - d.p.y, z - d.p.z); const dist = _d.length();
-    const want = dist > 1e-4 ? _d.multiplyScalar(Math.min(vmax, dist * soft) / dist) : _d.set(0, 0, 0);
-    _a.copy(want).sub(d.v).multiplyScalar(Math.min(1, dt * 2.4));
+    const want = dist > 1e-4 ? _d.multiplyScalar(Math.min(vmax, dist * soft * this.agile) / dist) : _d.set(0, 0, 0);
+    _a.copy(want).sub(d.v).multiplyScalar(Math.min(1, dt * 3.6 * this.agile));
     d.v.add(_a); d.p.addScaledVector(d.v, dt);
     // banking: tilt into the acceleration (nose down speeding up, roll into turns)
     const fx = Math.cos(d.yaw), fz = -Math.sin(d.yaw), ax = _a.x / Math.max(dt, 1e-3), az = _a.z / Math.max(dt, 1e-3);
@@ -142,13 +143,13 @@ export class DroneWorld {
       switch (d.state) {
         case 'pad':
           d.v.set(0, 0, 0); d.pitch *= 0.9; d.roll *= 0.9;
-          if (!this.halted && d.t > 0.7) { d.t = 0; const pk = H.pick(d), ds = pk && H.dest(d, this.lift); if (pk && ds) { d.pick = pk; d.tgt = new THREE.Vector3(d.p.x, d.cruise, d.p.z); this.go(d, 'up'); } else d.status = !pk ? 'nomountain' : 'nodest'; }
+          if (!this.halted && d.t > 0.35) { d.t = 0; const pk = H.pick(d), ds = pk && H.dest(d, this.lift); if (pk && ds) { d.pick = pk; d.tgt = new THREE.Vector3(d.p.x, d.cruise, d.p.z); this.go(d, 'up'); } else d.status = !pk ? 'nomountain' : 'nodest'; }
           break;
-        case 'up': if (this.steer(d, d.tgt.x, d.tgt.y, d.tgt.z, dt, vmax * 0.5, 1.4) < 0.4) { if (this.halted) this.goHome(d); else if (d.held.length) this.toDest(d); else this.nextJob(d); } break;
+        case 'up': if (this.steer(d, d.tgt.x, d.tgt.y, d.tgt.z, dt, vmax * 0.6, 2.2) < 0.6) { if (this.halted) this.goHome(d); else if (d.held.length) this.toDest(d); else this.nextJob(d); } break;
         case 'toPick': { const pk = d.pick; this.steer(d, pk.x, d.cruise, pk.z, dt, vmax); if (Math.hypot(pk.x - d.p.x, pk.z - d.p.z) < 0.7) this.go(d, 'down'); break; }
-        case 'down': { const pk = d.pick; if (this.steer(d, pk.x, pk.y + 0.62, pk.z, dt, vmax * 0.6, 1.8) < 0.14) { this.go(d, 'grab'); d.v.multiplyScalar(0.2); } break; }
+        case 'down': { const pk = d.pick; if (this.steer(d, pk.x, pk.y + 0.62, pk.z, dt, vmax * 0.7, 2.6) < 0.2) { this.go(d, 'grab'); d.v.multiplyScalar(0.2); } break; }
         case 'grab': this.steer(d, d.pick.x, d.pick.y + 0.6, d.pick.z, dt, 1);
-          if (d.t > 0.32) {
+          if (d.t > 0.22) {
             const types = this.halted ? [] : H.take(d, d.pick, this.lift);
             d.held = types.map(type => ({ type, mesh: H.tireMesh(type) })); d.lifted += types.length;
             if (types.length) H.sfx.clack && H.sfx.clack(H.att(d.p.x, d.p.z) * 0.6, true);
@@ -156,13 +157,13 @@ export class DroneWorld {
           } break;
         case 'hold': this.steer(d, d.p.x, d.cruise, d.p.z, dt, 2); if (d.t > 0.6) { d.t = 0; this.toDest(d); } break;
         case 'toDest': { const q = d.dest; this.steer(d, q.x, d.cruise, q.z, dt, vmax); if (Math.hypot(q.x - d.p.x, q.z - d.p.z) < 0.7) this.go(d, 'lowerD'); break; }
-        case 'lowerD': { const q = d.dest; if (this.steer(d, q.x, q.y + 1.35, q.z, dt, vmax * 0.6, 1.8) < 0.18) { this.go(d, 'drop'); d.relT = 0.1; d.stuck = 0; } break; }
+        case 'lowerD': { const q = d.dest; if (this.steer(d, q.x, q.y + 1.35, q.z, dt, vmax * 0.7, 2.6) < 0.25) { this.go(d, 'drop'); d.relT = 0.1; d.stuck = 0; } break; }
         case 'drop': {
           const q = d.dest; this.steer(d, q.x, q.y + 1.35, q.z, dt, 1);
           d.relT -= dt; if (d.relT > 0) break;
           if (!d.held.length) { d.cycles++; d.tgt = new THREE.Vector3(d.p.x, d.cruise, d.p.z); this.go(d, 'up'); break; }
           const h = d.held[d.held.length - 1], pos = h.mesh.position.clone();
-          if (H.release(d, h.type, pos, q)) { d.held.pop(); H.freeMesh(h.mesh); d.delivered++; this.delivered++; d.relT = 0.18; d.stuck = 0; }
+          if (H.release(d, h.type, pos, q)) { d.held.pop(); H.freeMesh(h.mesh); d.delivered++; this.delivered++; d.relT = 0.08; d.stuck = 0; }
           else { d.relT = 0.15; d.stuck += 0.15; if (d.stuck > 0.9) { d.stuck = 0; const nd = H.dest(d, d.held.length); if (nd) { d.dest = nd; this.go(d, 'toDest'); } else this.go(d, 'hold'); } }
           break;
         }

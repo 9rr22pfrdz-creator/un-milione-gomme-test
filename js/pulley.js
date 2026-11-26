@@ -102,6 +102,8 @@ function buildMagnet() {
   const box2 = new THREE.Mesh(box(0.2, 0.1, 0.14), MT.yellow); box2.position.set(0.24, 0.05, -0.2); g.add(box2);
   g.userData.led = ledMat; return g;
 }
+// big grapes of tires (up to 30): the first 10 hug the magnet, then rings hanging below
+function clusterAt(i) { if (i < CLUSTER.length) return CLUSTER[i]; const k = i - CLUSTER.length, ring = Math.floor(k / 7), a = (k % 7) / 7 * Math.PI * 2 + ring * 0.45, r = 0.38 + (ring % 2) * 0.12; return [Math.cos(a) * r, Math.sin(a) * r, -0.86 - ring * 0.2]; }
 const CLUSTER = [[0, 0, -0.36], [0.44, 0.1, -0.4], [-0.44, -0.1, -0.4], [0.1, 0.44, -0.42], [-0.1, -0.44, -0.42], [0.3, -0.3, -0.62], [-0.3, 0.3, -0.62], [0.32, 0.3, -0.66], [-0.3, -0.32, -0.66], [0, 0, -0.72]];
 
 export class PulleyWorld {
@@ -166,7 +168,7 @@ export class PulleyWorld {
     const top = CABLE_Y - 0.25, len = Math.max(0.05, top - (l.hy + 0.28));
     for (const [h, o] of [[l.hoist, 0.08], [l.hoist2, -0.08]]) { h.scale.y = len; h.position.set(p.x + l.geo.u.x * o, l.hy + 0.28 + len / 2, p.z + l.geo.u.z * o); }
     l.magnet.userData.led.color.setHex(l.on ? 0xff3b1e : 0x18ff6a); l.magnet.userData.led.emissive.setHex(l.on ? 0xff3b1e : 0x18ff6a);
-    l.held.forEach((h, i) => { const c = CLUSTER[i % CLUSTER.length]; const s = l.spin || 0, cs = Math.cos(s), sn = Math.sin(s);
+    l.held.forEach((h, i) => { const c = clusterAt(i); const s = l.spin || 0, cs = Math.cos(s), sn = Math.sin(s);
       h.mesh.position.set(p.x + c[0] * cs - c[1] * sn, l.hy + c[2], p.z + c[0] * sn + c[1] * cs); h.mesh.quaternion.set(0, 0, 0, 1); h.mesh.rotateY(i * 1.3); h.mesh.rotateX((i % 3 - 1) * 0.22); });
   }
   showPreview(a, b, state, pick = null) {
@@ -216,7 +218,7 @@ export class PulleyWorld {
           const h = l.held[l.held.length - 1], pos = h.mesh.position.clone();
           if (H.release(l, h.type, pos, l.dest)) {
             if (l.first) { H.sfx.magnetOff && H.sfx.magnetOff(ga); l.first = false; }
-            l.held.pop(); H.freeMesh(h.mesh); l.delivered++; l.relT = 0.07; l.stuck = 0;
+            l.held.pop(); H.freeMesh(h.mesh); l.delivered++; l.relT = l.held.length > 8 ? 0.028 : 0.06; l.stuck = 0;
           } else { l.relT = 0.12; l.stuck += 0.12; if (l.stuck > 0.9) { const d = H.dest(l, l.held.length); l.stuck = 0; if (d) l.dest = d; else { this.go(l, 'hover'); l.status = 'nodest'; } } }
           break;
         }
