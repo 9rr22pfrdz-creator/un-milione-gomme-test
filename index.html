@@ -19,17 +19,21 @@
 <canvas id="c"></canvas>
 <div id="pops"></div>
 <div id="hud" class="hidden">
-  <div class="top">
-    <div class="box"><div class="lbl">SOLDI</div><div id="money" class="big">€ 0,00</div></div>
-    <div class="box mid"><div class="lbl">GOMME NELLA MONTAGNA</div><div id="left" class="big">1.000.000</div><div class="bar"><i id="leftbar"></i></div><div class="sub">smaltite: <b id="cleared">0</b></div></div>
-    <div class="box r"><div class="lbl">FURGONE</div><div id="vfill" class="big">0/64</div><div class="bar v"><i id="vbar"></i></div></div>
+  <div class="stats">
+    <div id="money" class="money">€ 0,00</div>
+    <div class="left"><b id="left">1.000.000</b> GOMME RIMASTE</div>
+    <div class="sub">smaltite: <b id="cleared">0</b><span class="lbar"><i id="leftbar"></i></span></div>
+    <div class="van"><span class="vl">FURGONE</span><span class="bar v"><i id="vbar"></i></span><b id="vfill">0/64</b></div>
   </div>
-  <div class="carry"><div class="chip">✋ In mano <b id="hands">0/1</b></div><div id="cartchip" class="chip hidden"><span id="cartic"></span> Carrello <b id="cartn">0/4</b></div></div>
+  <button id="setbtn" class="round" aria-label="Impostazioni"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M19.4 13a7.7 7.7 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.3 7.3 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.7 7.7 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
   <div id="hint" class="hint hidden"></div>
   <div id="cross"></div><div id="aimlabel"></div>
-  <div id="zonehint" class="zonehint hidden">🚚 Avvicinati al furgone: lancia dal riquadro verde</div>
-  <button id="setbtn" class="round" aria-label="Impostazioni">⚙️</button>
-  <button id="shopbtn" class="shop">🏪<span>NEGOZIO <kbd>B</kbd></span></button>
+  <div id="zonehint" class="zonehint hidden">Avvicinati al furgone: lancia dal riquadro verde</div>
+  <div class="hotbar">
+    <div class="slot"><kbd class="k">CLIC</kbd><span class="ico">✋</span><span>In mano <b id="hands">0/1</b></span></div>
+    <div id="cartchip" class="slot hidden"><span id="cartic"></span><span>Carrello <b id="cartn">0/4</b></span></div>
+    <button id="shopbtn" class="slot shop"><kbd class="k">B</kbd><span class="ico">🏪</span><span>NEGOZIO</span></button>
+  </div>
   <button id="throwbtn" class="throwbtn hidden">LANCIA</button>
 </div>
 <div id="joy"><div id="knob"></div></div>
@@ -49,7 +53,7 @@
     <p>👈 Pollice sinistro: cammina · 👉 trascina: guardati intorno</p>
     <p>Tocca una gomma per prenderla · dietro al furgone tocca o premi LANCIA</p>
   </div>
-  <div class="ver">versione di prova 0.1 · prima fetta giocabile</div>
+  <div class="ver">versione di prova 0.4 · prima fetta giocabile</div>
 </div>
 
 <div id="pause" class="screen hidden dim">

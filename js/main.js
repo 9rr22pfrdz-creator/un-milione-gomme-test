@@ -8,6 +8,7 @@ import { Sfx } from './audio.js';
 import * as G from './gfx.js';
 import { buildWorker } from './workers.js';
 import { trolleySVG } from './trolley-icon.js';
+import * as YD from './yard.js';
 
 const Q = new URLSearchParams(location.search);
 const TEST = Q.has('test');
@@ -44,48 +45,66 @@ let pixelRatio = QP.pr;
 renderer.setPixelRatio(pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
-const FOG = 0xc9d3d8;
-scene.fog = new THREE.Fog(FOG, 70, 260);
+const FOG = 0xd8c9ad; // warm dusty haze
+scene.fog = new THREE.Fog(FOG, 55, 250);
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 520);
 scene.add(camera);
 
 // sky dome + environment for reflections
-const skyTex = G.skyTexture();
+const skyTex = YD.warmSkyTexture();
 const sky = new THREE.Mesh(new THREE.SphereGeometry(480, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false, depthWrite: false }));
 scene.add(sky);
 {
   const pm = new THREE.PMREMGenerator(renderer), es = new THREE.Scene();
   es.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide })));
-  const sunBlob = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 8), new THREE.MeshBasicMaterial({ color: 0xfff1d0 })); sunBlob.position.set(6, 6, 3); es.add(sunBlob);
-  scene.environment = pm.fromScene(es, 0.04).texture; scene.environmentIntensity = 0.55;
+  const sunBlob = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffe2b8 })); sunBlob.position.set(5.2, 4.3, 5.4); es.add(sunBlob);
+  scene.environment = pm.fromScene(es, 0.04).texture; scene.environmentIntensity = 0.4;
 }
-const hemi = new THREE.HemisphereLight(0xcfe2ff, 0x6d5c47, 0.75); scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
-const SUN_OFF = new THREE.Vector3(6, 30, 34);
+// golden late-afternoon sun, ~30° up, raking diagonal shadows; warm ground bounce in the shade
+const hemi = new THREE.HemisphereLight(0x94b0cf, 0x7a6852, 0.8); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffd8a8, 3.7);
+const SUN_OFF = new THREE.Vector3(0.6, 0.5, 0.62).normalize().multiplyScalar(48);
 sun.castShadow = true; sun.shadow.mapSize.set(QP.shadow, QP.shadow);
-const sc = sun.shadow.camera; sc.left = -26; sc.right = 26; sc.top = 26; sc.bottom = -26; sc.near = 2; sc.far = 130;
-sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
+const sc = sun.shadow.camera; sc.left = -26; sc.right = 26; sc.top = 26; sc.bottom = -26; sc.near = 2; sc.far = 140;
+sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.035; sun.shadow.radius = 2.5;
 scene.add(sun, sun.target);
-const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: G.glowTexture(), color: 0xfff3c8, fog: false, depthWrite: false, transparent: true }));
-sunSprite.scale.set(70, 70, 1); scene.add(sunSprite);
+const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: G.glowTexture(), color: 0xffe0a8, fog: false, depthWrite: false, transparent: true }));
+sunSprite.scale.set(110, 110, 1); scene.add(sunSprite);
 
 const mats = G.makeMats();
 const tm = G.tireMaterials();
 
 /* ---------------- ground + yard ---------------- */
-const gt = G.groundTexture();
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(260, 260), new THREE.MeshStandardMaterial({ map: gt.map, bumpMap: gt.bump, bumpScale: 1.5, roughness: 0.95, color: 0xffffff }));
-gt.map.repeat.set(52, 52); gt.bump.repeat.set(52, 52);
+const gt = YD.yardGroundTextures();
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(260, 260), new THREE.MeshStandardMaterial({ map: gt.map, bumpMap: gt.bump, bumpScale: 1.2, roughnessMap: gt.rough, roughness: 1, color: 0xffffff }));
 ground.rotation.x = -Math.PI / 2; ground.position.set(-25, 0, 0); ground.receiveShadow = true; scene.add(ground);
-const road = new THREE.Mesh(new THREE.PlaneGeometry(64, 6.5), new THREE.MeshStandardMaterial({ map: G.asphaltTexture(), roughness: 0.85 }));
-road.material.map.repeat.set(16, 2);
+const road = new THREE.Mesh(new THREE.PlaneGeometry(64, 8.2), new THREE.MeshStandardMaterial({ map: YD.bayAsphaltTexture(), transparent: true, depthWrite: false, roughness: 0.82, polygonOffset: true, polygonOffsetFactor: -1 }));
+road.material.map.repeat.set(9, 1);
+{ // feather all four edges of the bay so it melts into the concrete (alphaMap has its own 1x1 transform)
+  const [c, x] = G.cvs(256, 64); x.fillStyle = '#fff'; x.fillRect(0, 0, 256, 64);
+  const g = x.createLinearGradient(0, 0, 256, 0); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.03, 'rgba(0,0,0,0)'); g.addColorStop(0.97, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,1)');
+  x.fillStyle = g; x.fillRect(0, 0, 256, 64);
+  for (let i = 0; i < 120; i++) { x.fillStyle = `rgba(0,0,0,${Math.random()})`; x.beginPath(); x.arc(Math.random() * 10, Math.random() * 64, 1 + Math.random() * 3, 0, 7); x.fill(); }
+  road.material.alphaMap = new THREE.CanvasTexture(c);
+}
 road.rotation.x = -Math.PI / 2; road.position.set(VAN_X + 30, 0.012, VAN_Z); road.receiveShadow = true; scene.add(road);
 // yellow loading bay lines
 { const P = []; for (const s of [1, -1]) P.push([G.box(8, 0.01, 0.12), G.M(VAN_X + 3.2, 0.02, VAN_Z + s * 1.45)]); P.push([G.box(0.12, 0.01, 3), G.M(VAN_X - 0.6, 0.02, VAN_Z)]);
-  const m = new THREE.Mesh(G.merge(P), mats.yellow); m.receiveShadow = true; scene.add(m); }
+  const pm = new THREE.MeshStandardMaterial({ map: YD.scuffedPaintTexture(), transparent: true, depthWrite: false, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 });
+  const m = new THREE.Mesh(G.merge(P), pm); m.receiveShadow = true; m.renderOrder = 1; scene.add(m); }
+// worn tire tracks from the mountain foot to the van bay + rubber debris ringing the pile
+{
+  const tr = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 26), new THREE.MeshStandardMaterial({ map: YD.tracksTexture(), transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1 }));
+  tr.rotation.set(-Math.PI / 2, 0, Math.PI / 2 + 0.04); tr.position.set(-3, 0.008, VAN_Z - 0.2); tr.receiveShadow = true; scene.add(tr);
+  const [c, x] = G.cvs(512, 512); const g = x.createRadialGradient(256, 256, 120, 256, 256, 256); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.55, 'rgba(0,0,0,0.75)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 512, 512);
+  const am = new THREE.CanvasTexture(c);
+  const dt0 = YD.debrisTexture().clone(); dt0.wrapS = dt0.wrapT = THREE.RepeatWrapping; dt0.repeat.set(16, 16); dt0.needsUpdate = true;
+  const deb = new THREE.Mesh(new THREE.CircleGeometry(52, 48), new THREE.MeshStandardMaterial({ map: dt0, alphaMap: am, transparent: true, depthWrite: false, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1 }));
+  deb.rotation.x = -Math.PI / 2; deb.position.set(-42, 0.006, -4); deb.receiveShadow = true; scene.add(deb);
+}
 
 const zoneMat = (() => {
   const [c, x] = G.cvs(256, 192); x.clearRect(0, 0, 256, 192);
@@ -99,70 +118,7 @@ const zoneMesh = new THREE.Mesh(new THREE.PlaneGeometry(THROW_ZONE.far - THROW_Z
 zoneMesh.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); zoneMesh.position.set(VAN_X - (THROW_ZONE.near + THROW_ZONE.far) / 2, 0.06, VAN_Z); zoneMesh.renderOrder = 2; scene.add(zoneMesh);
 const colliders = []; // AABBs {x0,x1,z0,z1}
 const FENCE = { x0: -98, x1: 36, z0: -58, z1: 48 };
-function buildYard() {
-  // chain-link fence with posts; gate gap on the road
-  const ft = G.fenceTexture();
-  const fm = new THREE.MeshStandardMaterial({ map: ft, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.6 });
-  const posts = [];
-  const seg = (x0, z0, x1, z1) => {
-    const len = Math.hypot(x1 - x0, z1 - z0), m = new THREE.Mesh(new THREE.PlaneGeometry(len, 2.2), fm.clone());
-    m.material.map = ft.clone(); m.material.map.repeat.set(len / 1.2, 2); m.material.map.needsUpdate = true;
-    m.position.set((x0 + x1) / 2, 1.1, (z0 + z1) / 2); m.rotation.y = -Math.atan2(z1 - z0, x1 - x0); scene.add(m);
-    const n = Math.ceil(len / 3); for (let i = 0; i <= n; i++) { const k = i / n; posts.push([G.cyl(0.04, 0.04, 2.3, 6), G.M(G.lerp(x0, x1, k), 1.15, G.lerp(z0, z1, k))]); }
-  };
-  const F = FENCE;
-  seg(F.x0, F.z0, F.x1, F.z0); seg(F.x0, F.z1, F.x1, F.z1); seg(F.x0, F.z0, F.x0, F.z1);
-  seg(F.x1, F.z0, F.x1, VAN_Z - 4.2); seg(F.x1, VAN_Z + 4.2, F.x1, F.z1);
-  const pm = new THREE.Mesh(G.merge(posts), mats.steel); pm.castShadow = true; scene.add(pm);
-  // gate pillars
-  for (const s of [1, -1]) { const p = new THREE.Mesh(G.box(0.5, 2.8, 0.5), new THREE.MeshStandardMaterial({ map: G.plasterTexture(), roughness: 0.9 })); p.position.set(F.x1, 1.4, VAN_Z + s * 4.4); p.castShadow = true; scene.add(p); }
-  // the tire shop building (gommeria)
-  const bx = 21, bz = -15, bw = 12, bd = 8, bh = 4.6;
-  const plaster = new THREE.MeshStandardMaterial({ map: G.plasterTexture(), roughness: 0.92 });
-  const body = new THREE.Mesh(G.box(bw, bh, bd), plaster); body.position.set(bx, bh / 2, bz); body.castShadow = body.receiveShadow = true; scene.add(body);
-  const roof = new THREE.Mesh(G.box(bw + 0.8, 0.18, bd + 0.8), new THREE.MeshStandardMaterial({ map: G.corrugatedTexture(), roughness: 0.5, metalness: 0.6 })); roof.position.set(bx, bh + 0.09, bz); roof.castShadow = true; scene.add(roof);
-  const shutter = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 3.4), new THREE.MeshStandardMaterial({ map: G.shutterTexture(), roughness: 0.5, metalness: 0.6 })); shutter.position.set(bx - 2.2, 1.7, bz + bd / 2 + 0.01); scene.add(shutter);
-  const win = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.3), mats.glass); win.position.set(bx + 3.2, 2.0, bz + bd / 2 + 0.01); scene.add(win);
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 2.2), new THREE.MeshStandardMaterial({ color: 0x5a3b22, roughness: 0.7 })); door.position.set(bx + 1.0, 1.1, bz + bd / 2 + 0.01); scene.add(door);
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7.5, 1.3), new THREE.MeshStandardMaterial({ map: G.signTexture([{ t: 'GOMMERIA · SMALTIMENTO', y: 0.38, size: 92 }, { t: 'pneumatici usati', y: 0.75, size: 58 }]), roughness: 0.5 }));
-  sign.position.set(bx, bh - 0.2, bz + bd / 2 + 0.06); scene.add(sign);
-  colliders.push({ x0: bx - bw / 2 - 0.3, x1: bx + bw / 2 + 0.3, z0: bz - bd / 2 - 0.3, z1: bz + bd / 2 + 0.3 });
-  // display rack of new tires by the door
-  const rack = new THREE.Group(); const geoM = G.tireGeometry(T16, 'mid');
-  for (let i = 0; i < 6; i++) { const t = new THREE.Mesh(geoM, tm.rubber); t.position.set(bx + 4.6 - i * 0.24, 0.32, bz + bd / 2 + 0.5); t.rotation.z = Math.PI / 2; t.castShadow = true; rack.add(t); }
-  scene.add(rack);
-  // a red shipping container + pallets
-  const cont = new THREE.Mesh(G.box(6.1, 2.6, 2.45), new THREE.MeshStandardMaterial({ map: G.corrugatedTexture(), color: 0xb8402e, roughness: 0.6, metalness: 0.4 }));
-  cont.material.map.repeat.set(10, 1); cont.position.set(24, 1.3, 14); cont.rotation.y = 0.2; cont.castShadow = cont.receiveShadow = true; scene.add(cont);
-  colliders.push({ x0: 20.6, x1: 27.4, z0: 12.2, z1: 15.8 });
-  const pal = []; for (let i = 0; i < 4; i++) { pal.push([G.box(1.2, 0.14, 0.8), G.M(16 + i * 0.2, 0.07 + i * 0.15, 12, 0, i * 0.1, 0)]); }
-  const palM = new THREE.Mesh(G.merge(pal), new THREE.MeshStandardMaterial({ color: 0xa47b4b, roughness: 0.9 })); palM.castShadow = true; scene.add(palM);
-  colliders.push({ x0: 15.2, x1: 17.4, z0: 11.4, z1: 12.6 });
-  // light poles
-  for (const [x, z] of [[4, -9], [4, 10], [-30, 30], [-30, -38], [28, -4]]) {
-    const p = new THREE.Mesh(G.merge([[G.cyl(0.08, 0.12, 7, 8), G.M(0, 3.5, 0)], [G.box(1.2, 0.08, 0.08), G.M(0.5, 7, 0)]]), mats.steel); p.position.set(x, 0, z); p.castShadow = true; scene.add(p);
-    const l = new THREE.Mesh(G.box(0.5, 0.12, 0.3), mats.headlight); l.position.set(x + 1, 6.94, z); scene.add(l);
-    colliders.push({ x0: x - 0.25, x1: x + 0.25, z0: z - 0.25, z1: z + 0.25 });
-  }
-  // trees outside the fence + distant hills
-  const trunk = [], crown = [];
-  G.srand(77);
-  for (let i = 0; i < 70; i++) {
-    let x, z; const side = i % 4;
-    if (side === 0) { x = G.lerp(FENCE.x0, FENCE.x1, G.prand()); z = FENCE.z1 + 4 + G.prand() * 22; }
-    else if (side === 1) { x = G.lerp(FENCE.x0, FENCE.x1, G.prand()); z = FENCE.z0 - 4 - G.prand() * 22; }
-    else if (side === 2) { x = FENCE.x0 - 4 - G.prand() * 20; z = G.lerp(FENCE.z0, FENCE.z1, G.prand()); }
-    else { x = FENCE.x1 + 6 + G.prand() * 25; z = G.lerp(FENCE.z0, FENCE.z1, G.prand()); if (Math.abs(z - VAN_Z) < 6) z += 14; }
-    const h = 5 + G.prand() * 6, kind = G.prand();
-    trunk.push([G.cyl(0.18, 0.28, h * 0.45, 6), G.M(x, h * 0.22, z)]);
-    if (kind < 0.5) crown.push([new THREE.ConeGeometry(h * 0.28, h * 0.8, 8), G.M(x, h * 0.62, z)]);
-    else crown.push([new THREE.IcosahedronGeometry(h * 0.3, 1), G.M(x, h * 0.6, z, 0, G.prand() * 3, 0, 1, 0.85, 1)]);
-  }
-  const tr = new THREE.Mesh(G.merge(trunk), new THREE.MeshStandardMaterial({ color: 0x5b4330, roughness: 0.9 })); tr.castShadow = true; scene.add(tr);
-  const cr = new THREE.Mesh(G.merge(crown), new THREE.MeshStandardMaterial({ color: 0x4f6b3a, roughness: 0.85, flatShading: true })); cr.castShadow = true; scene.add(cr);
-  const hills = []; for (let i = 0; i < 26; i++) { const a = i / 26 * Math.PI * 2, r = 230 + G.prand() * 40; hills.push([new THREE.SphereGeometry(40 + G.prand() * 40, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), G.M(-25 + Math.cos(a) * r, -4, Math.sin(a) * r, 0, 0, 0, 1.6, 0.35 + G.prand() * 0.3, 1.2)]); }
-  scene.add(new THREE.Mesh(G.merge(hills), new THREE.MeshStandardMaterial({ color: 0x7d8f6a, roughness: 1, flatShading: true })));
-}
+function buildYard() { YD.buildYardV4(scene, { mats, tm, colliders, FENCE, VAN_X, VAN_Z, T16, tireGeometry: G.tireGeometry, low: QUALITY !== 'alta' }); }
 buildYard();
 
 /* ---------------- workers (they watch you, unimpressed) ---------------- */
@@ -203,7 +159,7 @@ function updateCorners(cells) {
     cornerH[k] = h; pos[k * 3 + 1] = h > 0 ? h - 0.14 : h;
     // the foot of the pile fades into the dusty gravel so the edge doesn't look cut out
     const f = G.clamp((h + 0.1) / 0.9, 0, 1), col = mGeo.attributes.color.array;
-    col[k * 3] = G.lerp(3.6, 1, f); col[k * 3 + 1] = G.lerp(3.4, 1, f); col[k * 3 + 2] = G.lerp(3.0, 1, f);
+    col[k * 3] = G.lerp(2.6, 1, f); col[k * 3 + 1] = G.lerp(2.35, 1, f); col[k * 3 + 2] = G.lerp(2.0, 1, f);
   }
   mGeo.attributes.color.needsUpdate = true;
   mGeo.attributes.position.needsUpdate = true; mGeo.computeVertexNormals(); mGeo.computeBoundingSphere();
@@ -283,7 +239,7 @@ function rebuildFar() {
       const big = 1 + Math.min(0.35, Math.max(0, d - QP.near) * 0.012); // far tires slightly larger so they still read as tires
       if (type === C.GOLD_ID) { if (ng < 96) { setInst(IM.gfar, ng, pos, quat, t, big * 1.15); IM.gfar.setColorAt(ng, _col.setRGB(1, 1, 1)); ng++; } continue; }
       if (n >= MAXF) break;
-      setInst(IM.far, n, pos, quat, t, big); const tc = tint(c, index, L, type); IM.far.setColorAt(n, tc.multiplyScalar(1.25)); n++;
+      setInst(IM.far, n, pos, quat, t, big); const tc = tint(c, index, L, type); IM.far.setColorAt(n, tc.multiplyScalar(1.02)); n++;
     }
   }
   IM.far.count = n; IM.gfar.count = ng;
@@ -403,7 +359,11 @@ function pop(worldPos, text, cls = '') {
   const v = worldPos.clone().project(camera); if (v.z > 1) return;
   const el = document.createElement('div'); el.className = 'pop ' + cls; el.textContent = text;
   el.style.left = ((v.x + 1) / 2 * innerWidth) + 'px'; el.style.top = ((1 - v.y) / 2 * innerHeight) + 'px';
-  $('pops').appendChild(el); setTimeout(() => el.remove(), 1300);
+  $('pops').appendChild(el); setTimeout(() => el.remove(), 1500);
+}
+function popHUD(text, cls = 'big') { // floats up from just under the money readout
+  const r = $('money').getBoundingClientRect(), el = document.createElement('div'); el.className = 'pop ' + cls; el.textContent = text;
+  el.style.left = (r.right - 50) + 'px'; el.style.top = (r.bottom + 40) + 'px'; $('pops').appendChild(el); setTimeout(() => el.remove(), 1500);
 }
 function updateHUD() {
   $('money').textContent = money(S.money);
@@ -554,7 +514,7 @@ function checkMilestones() {
 function vanFull() {
   if (V.state !== 'loading') return;
   const bonus = VEH.bonus; S.money += bonus; S.stats.earned += bonus; S.stats.vans++;
-  banner('Furgone pieno!', `+${money(bonus)} di consegna · torna tra poco`); sfx.coin(true);
+  banner('Furgone pieno!', `+${money(bonus)} di consegna · torna tra poco`); sfx.coin(true); popHUD('+' + money(bonus));
   V.state = 'closing'; V.t = 0; saveNow();
 }
 function doAction(ndc) {
@@ -833,7 +793,7 @@ requestAnimationFrame(frame);
 
 if (TEST) {
   window.__game = {
-    S, C, mountain, LAYOUT, V, get st() { return st; }, get fps() { return fps; }, get remaining() { return remaining; }, get nearRecs() { return nearRecs; },
+    S, C, mountain, LAYOUT, V, hemi, sun, scene, get st() { return st; }, get fps() { return fps; }, get remaining() { return remaining; }, get nearRecs() { return nearRecs; },
     start, saveNow, buy, openShop, closeShop, step, renderer, camera,
     advance(sec) { for (let t = 0; t < sec; t += 0.05) step(0.05); },
     info() { return { tris: renderer.info.render.triangles, calls: renderer.info.render.calls, near: nearRecs.length, far: IM.far.count, high: IM.high.count, mid: IM.mid.count }; },
