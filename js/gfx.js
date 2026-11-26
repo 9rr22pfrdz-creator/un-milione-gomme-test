@@ -298,25 +298,55 @@ export function buildVan(veh, mats, tireMat) {
 export function poseDoors(van, k) { for (const d of van.userData.doors) d.pivot.rotation.y = d.sign * Math.PI * 1.5 * k; }
 
 /* ---------- the cart ---------- */
-export function buildCart(mats, tireMat) {
-  const g = new THREE.Group(), P = [], T = [];
-  const bw = 1.38, bd = 0.78, by = 0.36;
-  P.push([box(bd, 0.04, bw), M(0, by, 0)]);
-  for (const s of [1, -1]) { P.push([box(bd, 0.05, 0.04), M(0, by + 0.05, s * bw / 2)]); P.push([box(0.04, 0.05, bw), M(s * bd / 2, by + 0.05, 0)]); }
-  // corner posts + rails
-  for (const sx of [1, -1]) for (const sz of [1, -1]) T.push([cyl(0.017, 0.017, 0.38, 8), M(sx * bd / 2, by + 0.2, sz * bw / 2)]);
-  for (const s of [1, -1]) { T.push([cyl(0.015, 0.015, bw, 8), M(s * bd / 2, by + 0.38, 0, Math.PI / 2)]); T.push([cyl(0.015, 0.015, bd, 8), M(0, by + 0.38, s * bw / 2, 0, 0, Math.PI / 2)]); }
-  // handle (toward the player at -x)
-  for (const s of [1, -1]) T.push([cyl(0.018, 0.018, 0.75, 8), M(-bd / 2 - 0.22, by + 0.32, s * 0.36, 0, 0, -0.62)]);
-  T.push([cyl(0.02, 0.02, 0.8, 8), M(-bd / 2 - 0.42, by + 0.62, 0, Math.PI / 2)]);
-  const grips = merge([[cyl(0.028, 0.028, 0.14, 10), M(-bd / 2 - 0.42, by + 0.62, 0.3, Math.PI / 2)], [cyl(0.028, 0.028, 0.14, 10), M(-bd / 2 - 0.42, by + 0.62, -0.3, Math.PI / 2)]]);
-  const frame = new THREE.Mesh(merge(P), mats.cartRed); frame.castShadow = true; g.add(frame);
-  const tubes = new THREE.Mesh(merge(T), mats.cartRed); tubes.castShadow = true; g.add(tubes);
-  g.add(new THREE.Mesh(grips, mats.black));
-  const wheel = wheelGeo(0.2, 0.09, 0.1);
-  for (const s of [1, -1]) { const tm = new THREE.Mesh(wheel.tire, tireMat); tm.position.set(0.05, 0.2, s * (bw / 2 + 0.07)); tm.rotation.x = Math.PI / 2; tm.castShadow = true; g.add(tm); const rm = new THREE.Mesh(wheel.rim, mats.steel); rm.position.copy(tm.position); rm.rotation.x = Math.PI / 2; g.add(rm); }
-  const stand = new THREE.Mesh(merge([[box(0.04, 0.3, 0.04), M(bd / 2 - 0.05, 0.18, 0.4)], [box(0.04, 0.3, 0.04), M(bd / 2 - 0.05, 0.18, -0.4)]]), mats.black); g.add(stand);
-  g.userData = { bedY: by + 0.03, bd, bw };
+// Upright gommista tire hand-truck (carrello portagomme): tubular steel frame, twin rails, curved backrest band,
+// angled handles with rubber grips, two pneumatic wheels, curved front cradle arms. Tires lie flat in a stack along the rails.
+// Built upright in `rig` with the wheel axle at the origin and +x = the tire side; the caller tilts rig.rotation.z.
+// cap <= 6: one stack; 8 and 10: two stacks side by side (double trolley), so it never gets taller than ~1.6 m.
+export function buildCart(mats, tireMat, cap = 4) {
+  const g = new THREE.Group(), rig = new THREE.Group(); g.add(rig);
+  const stacks = cap > 6 ? 2 : 1, per = Math.ceil(cap / stacks), STEP = 0.228, TR = 0.34;
+  const zc = stacks === 1 ? [0] : [-0.39, 0.39], railX = 0.05, xc = railX + 0.025 + TR, base = 0.04;
+  const L = base + per * STEP + 0.14, wheelR = 0.17;
+  const T = [], K = [];
+  const tube = (pts, r = 0.017, seg = 20) => T.push([new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), seg, r, 7, false), M()]);
+  const rails = [];
+  for (const z of zc) rails.push(z - 0.17, z + 0.17);
+  for (const z of rails) T.push([cyl(0.019, 0.019, L + 0.06, 9), M(railX, (L - 0.06) / 2, z)]);
+  // crossbars + curved backrest band hugging the stack
+  const zMin = Math.min(...rails), zMax = Math.max(...rails);
+  for (const y of [0.16, L - 0.04]) T.push([cyl(0.014, 0.014, zMax - zMin, 8), M(railX, y, (zMin + zMax) / 2, Math.PI / 2)]);
+  for (const z of zc) {
+    const band2 = []; for (let k = 0; k <= 16; k++) { const a = Math.PI * (0.62 + k * (0.76 / 16)); band2.push([xc + Math.cos(a) * (TR + 0.03), L * 0.55, z + Math.sin(a) * (TR + 0.03)]); }
+    tube(band2, 0.014, 18);
+    // curved front cradle arms around the bottom tire + toe plate
+    for (const s of [1, -1]) { const arm = []; for (let k = 0; k <= 10; k++) { const a = s * Math.PI * (0.78 - k * 0.062); arm.push([xc + Math.cos(a) * (TR + 0.025), base - 0.005, z + Math.sin(a) * (TR + 0.025)]); } tube(arm, 0.017, 14); }
+    K.push([box(0.3, 0.018, 0.3), M(railX + 0.16, base - 0.03, z)]);
+  }
+  // handles: rails bend back toward the pusher, black rubber grips
+  const outer = [zMin, zMax], grips = [];
+  for (const z of outer) {
+    const s = Math.sign(z);
+    tube([[railX, L - 0.02, z], [railX - 0.02, L + 0.06, z], [railX - 0.13, L + 0.17, z + s * 0.02], [railX - 0.26, L + 0.25, z + s * 0.04]], 0.019, 12);
+    grips.push([new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(railX - 0.2, L + 0.214, z + s * 0.032), new THREE.Vector3(railX - 0.33, L + 0.29, z + s * 0.05)]), 6, 0.027, 9, false), M()]);
+  }
+  // axle + wheel struts
+  T.push([cyl(0.016, 0.016, zMax - zMin + 0.16, 8), M(0, 0, (zMin + zMax) / 2, Math.PI / 2)]);
+  for (const z of outer) T.push([cyl(0.015, 0.015, 0.2, 8), M(railX * 0.5, 0.08, z, 0, 0, 0.3)]);
+  const paint = new THREE.MeshStandardMaterial({ color: 0x1f63d6, roughness: 0.38, metalness: 0.5 });
+  const frame = new THREE.Mesh(merge(T), paint); frame.castShadow = true; rig.add(frame);
+  const plates = new THREE.Mesh(merge(K), mats.steel); plates.castShadow = true; rig.add(plates);
+  const gr = new THREE.Mesh(merge(grips), mats.black); rig.add(gr);
+  const wheel = wheelGeo(wheelR, 0.085, 0.09);
+  for (const z of outer) {
+    const zz = z + Math.sign(z) * 0.08;
+    const tm = new THREE.Mesh(wheel.tire, tireMat); tm.position.set(0, 0, zz); tm.rotation.x = Math.PI / 2; tm.castShadow = true; rig.add(tm);
+    const rm = new THREE.Mesh(wheel.rim, mats.steel); rm.position.copy(tm.position); rm.rotation.x = Math.PI / 2; rig.add(rm);
+  }
+  // small rear casters near the top (as on real ones, for laying it down)
+  for (const z of outer) { const c = new THREE.Mesh(cyl(0.04, 0.04, 0.03, 12), mats.black); c.position.set(railX - 0.06, L * 0.62, z); c.rotation.x = Math.PI / 2; rig.add(c); }
+  // slot i -> position in rig space (stacks filled alternately when double)
+  const slot = (i, w = 0.2, out = new THREE.Vector3()) => { const si = i % stacks, lvl = Math.floor(i / stacks); return out.set(xc, base + w / 2 + lvl * STEP, zc[si]); };
+  g.userData = { rig, L, wheelR, cap, slot, handleLen: L + 0.29 };
   return g;
 }
 

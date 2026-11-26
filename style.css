@@ -84,3 +84,6 @@ body.touch .shop kbd{display:none}
 @media (max-width:820px){.box{min-width:0;padding:6px 10px}.box.mid{min-width:0}.big{font-size:19px}.hint{top:100px;font-size:14px}}
 
 .zonehint{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);background:#1f9d48ee;color:#fff;font-weight:800;padding:9px 18px;border-radius:12px;font-size:16px;box-shadow:0 6px 18px #0006;white-space:nowrap}
+.trolley-ic{display:inline-block;vertical-align:middle}
+#cartic .trolley-ic{margin:-6px 2px -6px -4px}
+.card .ic .trolley-ic{display:block;margin:0 auto}

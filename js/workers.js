@@ -67,18 +67,19 @@ export function buildWorker(look = {}) {
   const jaw = mesh(sph(0.095, 20, 12), M.skin, 0, -0.055, 0.02, head); jaw.scale.set(0.98, 0.8, 0.98);
   for (const s of [1, -1]) { const ear = mesh(sph(0.028, 10, 8), M.skin, s * 0.108, 0, -0.005, head); ear.scale.set(0.5, 1, 0.8); }
   for (const s of [1, -1]) {
-    const w = mesh(sph(0.021, 12, 10), M.eyeW, s * 0.042, 0.018, 0.098, head); w.scale.set(1, 0.85, 0.6);
-    mesh(sph(0.011, 10, 8), M.eye, s * 0.042, 0.017, 0.11, head);
-    const brow = mesh(new THREE.BoxGeometry(0.045, 0.011, 0.012), M.hair, s * 0.045, 0.052, 0.104, head); brow.rotation.z = s * -0.22; // a bit grumpy
+    const w = mesh(sph(0.02, 12, 10), M.eyeW, s * 0.04, -0.008, 0.104, head); w.scale.set(1, 0.8, 0.55);
+    mesh(sph(0.0105, 10, 8), M.eye, s * 0.04, -0.009, 0.1135, head);
+    const brow = mesh(new THREE.BoxGeometry(0.045, 0.011, 0.012), M.hair, s * 0.043, 0.019, 0.112, head); brow.rotation.z = s * -0.2; // a bit grumpy
   }
-  const nose = mesh(sph(0.024, 12, 10), M.skin, 0, -0.012, 0.118, head); nose.scale.set(0.85, 1.1, 1);
-  mesh(new THREE.BoxGeometry(0.04, 0.006, 0.01), M.mouth, 0, -0.062, 0.1, head);
-  if (L.mustache) { const m = mesh(new THREE.CapsuleGeometry(0.012, 0.055, 4, 8), M.hair, 0, -0.044, 0.112, head); m.rotation.z = Math.PI / 2; m.scale.set(1, 1, 0.8); }
-  if (L.beard) { const b = mesh(sph(0.098, 18, 12, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55), M.hair, 0, -0.04, 0.012, head); b.scale.set(1.0, 1.02, 1.04); mesh(new THREE.CapsuleGeometry(0.012, 0.05, 4, 8), M.hair, 0, -0.042, 0.113, head).rotation.z = Math.PI / 2; }
+  const nose = mesh(sph(0.024, 12, 10), M.skin, 0, -0.036, 0.116, head); nose.scale.set(0.85, 1.1, 1);
+  mesh(new THREE.BoxGeometry(0.04, 0.006, 0.01), M.mouth, 0, -0.084, 0.104, head);
+  if (L.mustache) { const m = mesh(new THREE.CapsuleGeometry(0.012, 0.055, 4, 8), M.hair, 0, -0.064, 0.111, head); m.rotation.z = Math.PI / 2; m.scale.set(1, 1, 0.8); }
+  if (L.beard) { const b = mesh(sph(0.098, 18, 12, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55), M.hair, 0, -0.04, 0.012, head); b.scale.set(1.0, 1.02, 1.04); mesh(new THREE.CapsuleGeometry(0.012, 0.05, 4, 8), M.hair, 0, -0.064, 0.112, head).rotation.z = Math.PI / 2; }
   const hairBack = mesh(sph(0.112, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.6), M.hair, 0, -0.005, -0.012, head); hairBack.scale.set(1.0, 1.08, 1.02);
-  const capTop = mesh(sph(0.118, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), M.cap, 0, 0.035, 0, head); capTop.scale.set(1, 0.85, 1.04);
-  const visor = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.012, 20, 1, false, -Math.PI / 2.4, Math.PI / 1.2), M.cap, 0, 0.04, 0.06, head); visor.scale.set(1, 1, 1.15); visor.rotation.x = 0.12;
-  mesh(sph(0.014, 8, 6), M.cap, 0, 0.135, 0, head);
+  const capTop = mesh(sph(0.118, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), M.cap, 0, 0.05, -0.004, head); capTop.scale.set(1, 0.8, 1.04);
+  const visor = mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.012, 20, 1, false, -Math.PI / 2.4, Math.PI / 1.2), M.cap, 0, 0.052, 0.062, head); visor.scale.set(1, 1, 1.15); visor.rotation.x = 0.14;
+  mesh(sph(0.014, 8, 6), M.cap, 0, 0.142, -0.004, head);
+  const band = mesh(new THREE.CylinderGeometry(0.119, 0.119, 0.016, 22, 1, true), M.cap, 0, 0.056, -0.004, head); band.scale.set(1, 1, 1.04);
   // ---- arms: shoulder -> elbow -> wrist (gloved hand) ----
   const arms = [];
   for (const s of [1, -1]) {
@@ -97,16 +98,17 @@ export function buildWorker(look = {}) {
   // ---- poses ----
   const [la, ra] = arms; // la = character's left (+x), ra = right (-x)
   const setArm = (a, sx, sz, ex, ez = 0, wx = 0) => { a.sh.rotation.set(sx, 0, a.s * sz); a.el.rotation.set(ex, 0, a.s * ez); a.wr.rotation.set(wx, 0, 0); };
-  if (L.pose === 'hips') { setArm(la, 0.25, 0.62, -1.15, -0.95); setArm(ra, 0.25, 0.62, -1.15, -0.95); }
+  if (L.pose === 'hips') { setArm(la, 0.12, 0.42, -0.85, -0.55, 0.1); setArm(ra, 0.12, 0.42, -0.85, -0.55, 0.1); }
   else if (L.pose === 'coffee') {
     setArm(la, -0.15, 0.12, -0.15); setArm(ra, -0.35, 0.18, -1.9, 0.25, 0.3);
     const cup = new THREE.Group(); ra.wr.add(cup); cup.position.set(0.0, -0.08, 0.05);
     mesh(new THREE.CylinderGeometry(0.03, 0.024, 0.08, 14), std(0xf4f1ea, 0.4), 0, 0, 0, cup);
     mesh(new THREE.CylinderGeometry(0.031, 0.031, 0.012, 14), std(0x8a4b22, 0.5), 0, 0.04, 0, cup);
-  } else { setArm(la, -0.5, 0.15, -1.75, 0.6); setArm(ra, -0.62, 0.15, -1.6, 0.75); }
+  } else { setArm(la, 0.06, 0.1, -0.28, 0.04, 0.15); setArm(ra, -0.04, 0.12, -0.42, 0.06, 0.2); } // relaxed, hanging
   legs[0].hip.rotation.z = 0.04; legs[1].hip.rotation.z = -0.04;
   const base = { hipsY: hips.position.y, t0: Math.random() * 10 };
   // idle: breathing, weight shift from foot to foot every few seconds
+  const armRest = arms.map(a => ({ sx: a.sh.rotation.x, ex: a.el.rotation.x }));
   function anim(t) {
     const tt = t + base.t0, br = Math.sin(tt * 1.6);
     chest.scale.set(1 + br * 0.012, 1 + br * 0.01, 1 + br * 0.018);
@@ -116,6 +118,7 @@ export function buildWorker(look = {}) {
     legs[0].hip.rotation.z = 0.04 - w * 1.2; legs[1].hip.rotation.z = -0.04 - w * 1.2;
     legs[shift > 0 ? 1 : 0].knee.rotation.x = 0.12 * Math.abs(Math.max(-1, Math.min(1, sm * 3)));
     legs[shift > 0 ? 0 : 1].knee.rotation.x = 0.0;
+    arms.forEach((a, i) => { if (L.pose === 'coffee' && i === 1) return; const sw = Math.sin(tt * 1.6 + i) * 0.025; a.sh.rotation.x = armRest[i].sx + sw; a.el.rotation.x = armRest[i].ex - sw * 0.6; });
     hips.position.y = base.hipsY - Math.abs(w) * 0.15 + br * 0.002;
   }
   root.userData = { head, anim };

@@ -15,11 +15,11 @@ export function braidLayout(cargo, R = SLOT_R, w = SLOT_W) {
     const hRow = 2 * R * sa + w * ca;        // height of one row
     const sMin = (w * 0.82) / sa;            // tires half-nest: sidewalls slightly interleaved
     const pMin = hRow * 0.66;                // next row sits in the notches
-    const n = fit(W - 0.04, fz, sMin), rows = fit(H - 0.03, hRow, pMin);
+    const n = fit(W - 0.012, fz, sMin), rows = fit(H - 0.03, hRow, pMin);
     if (n < 1 || rows < 1) continue;
-    const s = n > 1 ? Math.min(sMin * 1.25, (W - 0.04 - fz) / (n - 1)) : 0;
+    const s = n > 1 ? (W - 0.012 - fz) / (n - 1) : 0; // spread wall to wall
     const p = rows > 1 ? Math.min(pMin * 1.18, (H - 0.03 - hRow) / (rows - 1)) : 0;
-    const leftover = (W - 0.04 - fz - s * (n - 1)) / W + (H - 0.03 - hRow - p * (rows - 1)) / H;
+    const leftover = (W - 0.012 - fz - s * (n - 1)) / W + (H - 0.03 - hRow - p * (rows - 1)) / H;
     const score = n * rows - leftover * 0.9;
     if (!best || score > best.score) best = { deg, a, n, rows, s, p, fz, hRow, score };
   }
@@ -33,7 +33,7 @@ export function braidLayout(cargo, R = SLOT_R, w = SLOT_W) {
       const y = best.hRow / 2 + j * best.p + 0.015;
       const off = (j % 2) * best.s * 0.0;
       for (let i = 0; i < best.n; i++) {
-        const z = -W / 2 + 0.02 + best.fz / 2 + i * best.s + off;
+        const z = -W / 2 + 0.006 + best.fz / 2 + i * best.s + off;
         slots.push({ i: slots.length, wall: k, row: j, col: i, x, y, z, rx: -dir * best.a, dir });
       }
     }

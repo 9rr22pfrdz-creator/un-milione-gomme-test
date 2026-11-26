@@ -54,7 +54,7 @@ export const PLAYER = {
 export const PHASES = [
   null,
   { n: 1, name: 'A mano', icon: '✋' },
-  { n: 2, name: 'Il carrello', icon: '🛒' },
+  { n: 2, name: 'Il carrello', icon: 'cart' },
   { n: 3, name: 'Gli aiutanti', icon: '👷' },
   { n: 4, name: 'I nastri trasportatori', icon: '➰' },
   { n: 5, name: 'I bracci robot', icon: '🦾' },
@@ -67,10 +67,10 @@ export const UPGRADES = [
   { id: 'gloves', phase: 1, icon: '🧤', name: 'Guanti da gommista', desc: 'Con i guanti tieni due gomme alla volta, una per mano.', unit: 'gomme in mano', lv: [1, 2] },
   { id: 'grip', phase: 1, icon: '💪', name: 'Presa veloce', desc: 'Strappi le gomme dalla montagna più in fretta.', unit: 's per gomma', lv: [0.9, 0.65, 0.48, 0.36] },
   // phase 2
-  { id: 'cart', phase: 2, icon: 'cart', machine: true, name: 'Carrello portagomme', desc: 'Un carrello rosso da spingere. Parte da 4 gomme e arriva a 10.', unit: 'gomme', lv: [0, 4, 6, 8, 10] },
+  { id: 'cart', phase: 2, icon: 'cart', machine: true, name: 'Carrello portagomme', desc: 'Il carrello portagomme in tubolare d\'acciaio: le gomme impilate una sull\'altra. Parte da 4 gomme e arriva a 10.', unit: 'gomme', lv: [0, 4, 6, 8, 10] },
   // phase 3 (not in the first playable slice)
   { id: 'helper', phase: 3, icon: '👷', machine: true, name: 'Aiutanti', desc: 'Operai che portano le gomme al furgone da soli.', unit: 'aiutanti', lv: [0, 1, 2, 3, 4, 5], rate: 0.35 },
-  { id: 'helperCart', phase: 3, icon: '🛒', name: 'Carretti per gli aiutanti', desc: 'Ogni aiutante spinge un carretto da 6.', unit: 'x velocità', lv: [1, 2.2] },
+  { id: 'helperCart', phase: 3, icon: 'cart', name: 'Carretti per gli aiutanti', desc: 'Ogni aiutante spinge un carretto da 6.', unit: 'x velocità', lv: [1, 2.2] },
   // phase 4
   { id: 'belt', phase: 4, icon: '➰', machine: true, name: 'Nastri trasportatori', desc: 'Dalla montagna al furgone senza fare un passo.', unit: 'nastri', lv: [0, 1, 2, 3, 4], rate: 2.0 },
   { id: 'beltSpeed', phase: 4, icon: '⏩', name: 'Motori dei nastri', desc: 'Nastri più veloci.', unit: 'x velocità', lv: [1, 1.4, 1.8] },
