@@ -1,6 +1,6 @@
 // Save/load with a stable key + backup. Pure: storage is injected (localStorage in the browser).
 // No offline progress: nothing is ever computed from the time spent away.
-import { defaultLevels, UPGRADES, maxLevel } from './config.js';
+import { defaultLevels, UPGRADES, maxLevel, stats } from './config.js';
 
 export const SAVE_KEY = 'umdg-save';
 export const BACKUP_KEY = 'umdg-save-bak';
@@ -14,7 +14,9 @@ export function defaultState() {
     mountain: [],             // sparse diff [cell, count, ...] against the generated mountain
     gold: null,               // planted gold tire {cell, index, taken}
     hands: [],                // tire type ids held in the hands
-    cart: [],                 // tire type ids in the cart
+    cart: [],                 // tire type ids stacked on the trolley (stay on it when it is parked)
+    cartHeld: true,           // trolley in your hands (pushing) or parked somewhere in the yard
+    cartPos: null,            // where it is parked: {x, z, rot}
     van: { fill: [], trips: 0 }, // fill: per slot [type] or [3,3] for two scooter tires
     player: { x: 3, z: 0.5, yaw: Math.PI / 2, pitch: -0.12 },
     stats: { cleared: 0, earned: 0, thrown: 0, vans: 0, gold: 0, playTime: 0, bySize: [0, 0, 0, 0, 0] },
@@ -41,6 +43,13 @@ export function normalize(raw) {
   if (isObj(raw.gold) && Number.isInteger(raw.gold.cell) && Number.isInteger(raw.gold.index)) s.gold = { cell: raw.gold.cell, index: raw.gold.index, taken: !!raw.gold.taken };
   s.hands = tireArr(raw.hands, 2);
   s.cart = tireArr(raw.cart, 10);
+  // v4 saves have no cartHeld: the trolley was always in your hands
+  s.cartHeld = typeof raw.cartHeld === 'boolean' ? raw.cartHeld : true;
+  if (isObj(raw.cartPos) && [raw.cartPos.x, raw.cartPos.z].every(v => typeof v === 'number' && Number.isFinite(v))) s.cartPos = { x: raw.cartPos.x, z: raw.cartPos.z, rot: num(raw.cartPos.rot, 0) };
+  if (!s.cartHeld && !s.cartPos) s.cartHeld = true; // parked but nowhere: give it back
+  // never trolley + hand tires at once (v4 allowed it): move what fits onto the trolley; the game parks it if some are left
+  const cap = stats(s.lv).cart;
+  if (cap > 0 && s.cartHeld) while (s.hands.length && s.cart.length < cap) s.cart.push(s.hands.shift());
   if (isObj(raw.van)) {
     if (Array.isArray(raw.van.fill)) s.van.fill = raw.van.fill.filter(f => Array.isArray(f) && f.length >= 1 && f.length <= 2).map(f => tireArr(f, 2)).filter(f => f.length);
     s.van.trips = Math.max(0, num(raw.van.trips, 0) | 0);

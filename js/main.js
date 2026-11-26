@@ -325,9 +325,11 @@ function refreshHands() {
     handMeshes[i].visible = true; handMeshes[i].material = S.lv.gloves > 0 ? gloveMat : mats.skin;
   });
 }
-function capacity() { return st.hands + st.cart; }
-function carried() { return S.hands.length + S.cart.length + reservedCart + reservedHands; }
-function carriedNow() { return S.hands.length + S.cart.length; }
+// holding the trolley = both hands on its handles: tires go only onto the trolley. Parked trolley = free hands.
+function holding() { return st.cart > 0 && S.cartHeld; }
+function capacity() { return holding() ? st.cart : st.hands; }
+function carried() { return holding() ? S.cart.length + reservedCart : S.hands.length + reservedHands; }
+function carriedNow() { return holding() ? S.cart.length : S.hands.length; }
 
 /* ---------------- flying tires (grab + throw) ---------------- */
 const flyPool = [];
@@ -375,7 +377,9 @@ function updateHUD() {
   $('vbar').style.width = (100 * vf / LAYOUT.cap) + '%';
   $('hands').textContent = `${S.hands.length}/${st.hands}`;
   $('cartchip').classList.toggle('hidden', st.cart === 0);
-  $('cartn').textContent = `${S.cart.length}/${st.cart}`;
+  $('cartn').textContent = `${S.cart.length}/${st.cart}` + (st.cart && !S.cartHeld ? ' · posato' : '');
+  $('handchip').classList.toggle('dim', holding()); $('cartchip').classList.toggle('on', holding()); $('cartchip').classList.toggle('dim', !holding());
+  $('parkbtn').classList.toggle('hidden', !holding());
   const nextAff = C.UPGRADES.some(u => u.phase <= 2 && canBuy(u.id));
   $('shopbtn').classList.toggle('pulse', nextAff);
 }
@@ -394,7 +398,7 @@ function buy(id) {
   const u = C.UPG[id], lv = S.lv[id], c = C.costOf(id, lv);
   if (c == null || S.money < c || (REQ[id] && !REQ[id](S.lv)) || u.phase > 2) return false;
   S.money -= c; S.lv[id]++; st = C.stats(S.lv); sfx.buy();
-  if (id === 'cart' && S.lv.cart === 1) { banner('Fase 2: il carrello', 'Le gomme che prendi finiscono nel carrello. Al furgone clicca per lanciarle.'); }
+  if (id === 'cart' && S.lv.cart === 1) { S.cartHeld = true; while (S.hands.length && S.cart.length < st.cart) S.cart.push(S.hands.shift()); if (S.hands.length) { S.cartHeld = false; parkSpot(true); } banner('Fase 2: il carrello', isTouch ? 'Le gomme vanno sul carrello. Tocca «Posa carrello» per lasciarlo giù.' : 'Le gomme vanno sul carrello. Premi Q per posarlo, E per riprenderlo.'); }
   else banner(u.name, `${fmtVal(u, u.lv[S.lv[id]])}`);
   if (S.tut === 2) S.tut = 3;
   refreshCart(); refreshHands(); renderShop(); updateHUD(); saveNow();
@@ -454,14 +458,14 @@ function tryGrab(rec) {
   if (rec._t > C.PLAYER.reach) { toast('Troppo lontana: avvicinati'); return true; }
   if (!rec.free) { toast(rec.type === C.GOLD_ID ? 'La gomma d\'oro è sepolta: togli prima le gomme sopra!' : 'È sepolta: togli prima le gomme sopra'); sfx.buried(); P.shake = 0.18; return true; }
   if (grabBusy > 0) return true;
-  if (carried() >= capacity()) { toast(st.cart ? 'Carrello pieno: vai al furgone' : 'Hai le mani piene: porta le gomme al furgone'); sfx.nope(); return true; }
+  if (carried() >= capacity()) { toast(holding() ? 'Carrello pieno! Vai al furgone' : 'Hai le mani piene: porta le gomme al furgone'); sfx.nope(); return true; }
   const type = mountain.take(rec.c, rec.index); if (type == null) return false;
   remaining--; grabBusy = st.grab; nearDirty = true; farDirty = true;
   const slid = mountain.lastSlide || 0;
   updateCorners(mountain.dirty); mountain.dirty.clear();
   sfx.grab(type === 3 ? 0 : type, 0);
   if (slid > 0) { sfx.slide(slid); dust(rec.pos, 10); toast('Frana! Sono scese altre gomme', 1400); } else dust(rec.pos, 3);
-  const toCart = st.cart > 0 && S.cart.length < st.cart;
+  const toCart = holding();
   const slotI = toCart ? S.cart.length + reservedCart : S.hands.length + reservedHands;
   if (toCart) reservedCart++; else reservedHands++;
   const from = rec.pos.clone(), q0 = rec.quat.clone();
@@ -480,8 +484,8 @@ let reservedCart = 0, reservedHands = 0;
 function tryThrow() {
   if (!inThrowZone() || throwCD > 0) return false;
   let type, fromHand = false, srcPos = new THREE.Vector3(), srcQ = new THREE.Quaternion();
-  if (S.hands.length) { fromHand = true; const i = S.hands.length - 1; type = S.hands[i]; handTires[i].getWorldPosition(srcPos); handTires[i].getWorldQuaternion(srcQ); }
-  else if (S.cart.length) { const i = S.cart.length - 1; type = S.cart[i]; cartTires[i].getWorldPosition(srcPos); cartTires[i].getWorldQuaternion(srcQ); }
+  if (!holding() && S.hands.length) { fromHand = true; const i = S.hands.length - 1; type = S.hands[i]; handTires[i].getWorldPosition(srcPos); handTires[i].getWorldQuaternion(srcQ); }
+  else if (holding() && S.cart.length) { const i = S.cart.length - 1; type = S.cart[i]; cartTires[i].getWorldPosition(srcPos); cartTires[i].getWorldQuaternion(srcQ); }
   else return false;
   const place = placeTire(virtFill(), LAYOUT.cap, !!C.TIRES[type].half);
   if (!place) return false;
@@ -491,14 +495,14 @@ function tryThrow() {
   const lp = new THREE.Vector3(), lq = new THREE.Quaternion(); slotLocal(place.slot, place.sub, type, lp, lq);
   const wq = new THREE.Quaternion();
   sfx.whoosh(0);
-  startFlight({ kind: 'throw', p, type, from: srcPos, q0: srcQ, to: (o) => van.localToWorld(o.copy(lp)), q1: () => wq.copy(van.quaternion).multiply(lq), dur: 0.62, arc: 1.15, spin: 1,
+  startFlight({ kind: 'throw', p, type, from: srcPos, q0: srcQ, to: (o) => van.localToWorld(o.copy(lp)), q1: () => wq.copy(van.quaternion).multiply(lq), dur: 0.34, arc: 0.28, spin: 0.6, ease: 'line',
     done: () => {
       V.pend.splice(V.pend.indexOf(p), 1);
       if (p.sub) S.van.fill[p.slot].push(type); else S.van.fill[p.slot] = [type];
       rebuildCargo();
       const val = C.TIRES[type].value; S.money += val; S.stats.earned += val; S.stats.cleared++; S.stats.thrown++; S.stats.bySize[type]++;
       if (type === C.GOLD_ID) S.stats.gold++;
-      const s = LAYOUT.slots[p.slot]; sfx.clink(type === 3 ? 0 : type, s.row / LAYOUT.rows, 0);
+      const s = LAYOUT.slots[p.slot]; sfx.clink(type === 3 ? 0 : type, s.row / LAYOUT.rows, 0, type === C.GOLD_ID);
       pop(van.localToWorld(lp.clone()), '+' + money(val), type === C.GOLD_ID ? 'gold' : '');
       if (S.tut === 1) { S.tut = 2; updateTut(); }
       checkMilestones(); updateHUD();
@@ -518,6 +522,7 @@ function vanFull() {
   V.state = 'closing'; V.t = 0; saveNow();
 }
 function doAction(ndc) {
+  if (aimingAtCart()) { pickCart(); return; }
   const rec = pickAt(ndc || lastAimNDC);
   if (rec && rec._t <= C.PLAYER.reach + 1.5) { if (tryGrab(rec)) return; }
   if (inThrowZone()) { if (!tryThrow() && !carried()) toast('Non hai gomme: vai a prenderle alla montagna'); return; }
@@ -557,7 +562,8 @@ function blocked(x, z) {
   if (meshH(x, z) > 0.55) return true;
   for (const b of colliders) if (x > b.x0 - 0.3 && x < b.x1 + 0.3 && z > b.z0 - 0.3 && z < b.z1 + 0.3) return true;
   if (van.visible) { const vx = van.position.x, W = VEH.cargo.W / 2 + 0.25; if (x > vx - 0.35 && x < vx + VEH.cargo.L + 2.0 && Math.abs(z - VAN_Z) < W + 0.25) return true; }
-  if (st.cart > 0 && cartPose.side < 0.5) { const D = (cartPose.D || 1.4) + 0.3, fx = x - Math.sin(P.yaw) * D, fz = z - Math.cos(P.yaw) * D; if (meshH(fx, fz) > 1.0) return true; }
+  if (st.cart > 0 && !S.cartHeld && S.cartPos && Math.hypot(x - S.cartPos.x, z - S.cartPos.z) < 0.6) return true;
+  if (holding() && cartPose.side < 0.5) { const D = (cartPose.D || 1.4) + 0.3, fx = x - Math.sin(P.yaw) * D, fz = z - Math.cos(P.yaw) * D; if (meshH(fx, fz) > 1.0) return true; }
   return false;
 }
 function updatePlayer(dt) {
@@ -580,7 +586,7 @@ function updatePlayer(dt) {
   camera.position.set(P.x, P.eye + ground + Math.sin(P.bob) * 0.035 * Math.min(1, moving / 3), P.z);
   camera.rotation.set(P.pitch + (P.shake ? Math.sin(P.shake * 90) * 0.01 : 0), P.yaw, 0, 'YXZ');
   // cart follows in front of the player
-  if (st.cart > 0) updateTrolley(dt, sy, cy, moving);
+  if (st.cart > 0) { if (S.cartHeld) updateTrolley(dt, sy, cy, moving); else poseParked(); }
   // hands sway
   handGroup.position.set(Math.sin(P.bob * 0.5) * 0.01, Math.abs(Math.cos(P.bob * 0.5)) * 0.012, 0);
 }
@@ -600,6 +606,54 @@ function updateTrolley(dt, sy, cy, moving) {
   U.rig.rotation.x = Math.sin(P.bob * 0.5) * 0.012 * Math.min(1, moving / 2);
 }
 
+// ---- park / pick up the trolley ----
+function poseParked() {
+  const U = trolley.userData, c = S.cartPos;
+  cart.position.set(c.x, 0, c.z); cart.rotation.y = c.rot + Math.PI / 2;
+  U.rig.rotation.set(0, 0, 0.09); U.rig.position.y = U.wheelR; // standing upright, leaning a touch on its frame
+}
+// find a free spot in front of the player (inside the fence, off the mountain, away from van/office/props)
+function parkSpot(force = false) {
+  const sy = Math.sin(P.yaw), cy = Math.cos(P.yaw);
+  for (const d of [1.25, 1.0, 1.6, 0.85]) for (const side of [0, 0.6, -0.6, 1.0, -1.0]) {
+    const x = P.x - sy * d + cy * side, z = P.z - cy * d - sy * side;
+    if (x < FENCE.x0 + 1 || x > FENCE.x1 - 1 || z < FENCE.z0 + 1 || z > FENCE.z1 - 1) continue;
+    if (meshH(x, z) > 0.05 || blockedStatic(x, z, 0.45)) continue;
+    S.cartPos = { x, z, rot: P.yaw }; return true;
+  }
+  if (force) { S.cartPos = { x: P.x - cy * 0.8, z: P.z + sy * 0.8, rot: P.yaw }; return true; }
+  return false;
+}
+function blockedStatic(x, z, pad) {
+  for (const b of colliders) if (x > b.x0 - pad && x < b.x1 + pad && z > b.z0 - pad && z < b.z1 + pad) return true;
+  if (van.visible) { const vx = van.position.x; if (x > vx - 0.9 && x < vx + VEH.cargo.L + 2.4 && Math.abs(z - VAN_Z) < VEH.cargo.W / 2 + 0.7) return true; }
+  if (Math.hypot(x - P.x, z - P.z) < 0.55) return true;
+  return false;
+}
+function parkCart() {
+  if (!holding() || reservedCart > 0) return false;
+  if (!parkSpot()) { toast('Qui non c\'è spazio per posare il carrello'); sfx.nope(); return false; }
+  S.cartHeld = false; sfx.thud(1); refreshCart(); updateHUD(); saveNow();
+  toast(isTouch ? 'Carrello posato · tocca «Prendi carrello» per riprenderlo' : 'Carrello posato · guardalo e premi E per riprenderlo', 2200);
+  return true;
+}
+function cartDist() { return (st.cart > 0 && !S.cartHeld && S.cartPos) ? Math.hypot(P.x - S.cartPos.x, P.z - S.cartPos.z) : Infinity; }
+function aimingAtCart() {
+  const d = cartDist(); if (d > 3.1) return false;
+  if (isTouch) return false; // on touch: the «Prendi carrello» button
+  const dx = S.cartPos.x - P.x, dz = S.cartPos.z - P.z, yaw = Math.atan2(-dx, -dz);
+  let a = Math.abs(((yaw - P.yaw) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI);
+  const pitchTo = Math.atan2(0.75 - P.eye, d); // aim at the middle of the trolley
+  return a < Math.max(0.22, Math.atan2(0.5, d)) && Math.abs(P.pitch - pitchTo) < 0.55;
+}
+function pickCart() {
+  if (st.cart === 0 || S.cartHeld || cartDist() > 3.1 || reservedHands > 0) return false;
+  if (S.hands.length > st.cart - S.cart.length) { toast('Posa o carica prima le gomme in mano: sul carrello non c\'è posto'); sfx.nope(); return false; }
+  while (S.hands.length) S.cart.push(S.hands.shift()); // what you carried goes onto the stack
+  S.cartHeld = true; cartPose.side = 0; sfx.thud(S.cart.length); refreshHands(); refreshCart(); updateHUD(); saveNow();
+  return true;
+}
+
 /* ---------------- input ---------------- */
 let playing = false;
 function lockPointer() { if (!isTouch && playing && !shopOpen && !settingsOpen) canvas.requestPointerLock?.(); }
@@ -608,6 +662,7 @@ addEventListener('keydown', e => {
   if (!playing) return;
   if (e.code === 'KeyB' || e.code === 'Tab') { e.preventDefault(); shopOpen ? closeShop() : openShop(); }
   if (e.code === 'KeyE' || e.code === 'Space') { e.preventDefault(); actionHeld = true; doAction(); }
+  if (e.code === 'KeyQ') { e.preventDefault(); if (holding()) parkCart(); else if (cartDist() < 3.1) pickCart(); }
   if (e.code === 'KeyM') { sfx.muted = !sfx.muted; sfx.setVolume(S.settings.volume); toast(sfx.muted ? 'Audio spento' : 'Audio acceso'); }
 });
 addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyE' || e.code === 'Space') actionHeld = false; });
@@ -670,6 +725,8 @@ function start() {
 }
 $('play').onclick = start;
 $('shopbtn').onclick = (e) => { e.stopPropagation(); openShop(); };
+$('parkbtn').onclick = (e) => { e.stopPropagation(); parkCart(); };
+$('pickbtn').onclick = (e) => { e.stopPropagation(); if (!pickCart() && cartDist() > 3.1) toast('Avvicinati al carrello'); };
 $('shopclose').onclick = closeShop;
 $('shop').addEventListener('click', e => { if (e.target.id === 'shop') closeShop(); });
 $('resume').onclick = () => lockPointer();
@@ -742,15 +799,18 @@ function step(dt) {
     }
     const lab = $('aimlabel'), ch = $('cross');
     let text = '', cls = '';
-    if (rec && rec._t <= C.PLAYER.reach + 1.5) {
+    if (aimingAtCart()) { text = isTouch ? 'Prendi carrello' : '[E] / Clic · Prendi carrello'; cls = 'ok'; }
+    else if (rec && rec._t <= C.PLAYER.reach + 1.5) {
       const t = C.TIRES[rec.type];
       if (!rec.free) { text = rec.type === C.GOLD_ID ? 'Gomma d\'oro · sepolta' : 'Sepolta'; cls = 'bad'; }
       else if (rec._t > C.PLAYER.reach) { text = 'Avvicinati'; cls = 'far'; }
+      else if (carried() >= capacity()) { text = holding() ? 'Carrello pieno! Vai al furgone' : 'Mani piene: vai al furgone'; cls = 'bad'; }
       else { text = rec.type === C.GOLD_ID ? 'Gomma d\'oro!' : `Prendi ${t.name}`; cls = rec.type === C.GOLD_ID ? 'gold' : 'ok'; }
     } else if (inThrowZone() && carriedNow()) { text = 'Lancia nel furgone'; cls = 'throw'; }
     else if (carriedNow() && nearVanButOut()) { text = 'Avvicinati al furgone'; cls = 'far'; }
     lab.textContent = text; lab.className = cls; ch.className = cls;
   }
+  $('pickbtn').classList.toggle('hidden', !(playing && cartDist() < 3.1));
   if (isTouch) throwBtn.classList.toggle('hidden', !(playing && inThrowZone() && carriedNow()));
   zoneMesh.visible = vanReady();
   zoneMat.opacity = carriedNow() ? (inThrowZone() ? 1 : 0.75 + Math.sin(performance.now() / 260) * 0.25) : 0.45;
@@ -784,6 +844,7 @@ function step(dt) {
 
 /* ---------------- boot ---------------- */
 st = C.stats(S.lv);
+if (st.cart > 0 && S.cartHeld && S.hands.length) { S.cartHeld = false; parkSpot(true); } // old save with tires in both
 refreshCart(); refreshHands(); rebuildCargo();
 if (S.van.fill.length >= LAYOUT.cap) { V.state = 'closing'; V.t = 0; }
 van.position.set(VAN_X, 0, VAN_Z);
@@ -808,7 +869,7 @@ if (TEST) {
     inZone: inThrowZone,
     carried, capacity, vanCount: vanFillCount, cargoCount: () => cargoIM.count + cargoGold.count,
     flights: () => flights.length, flightInfo: () => flights.map(f => ({ t: f.t, dur: f.dur, kind: f.kind })), frames: () => frameN, setMoney(m) { S.money = m; updateHUD(); },
-    meshH, blocked, refreshCart, refreshHands,
+    meshH, blocked, refreshCart, refreshHands, parkCart, pickCart, aimingAtCart, holding, cartDist,
     keys, P,
   };
 }

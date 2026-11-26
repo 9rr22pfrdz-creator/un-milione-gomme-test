@@ -102,3 +102,10 @@ body.touch .shop{padding:10px 16px}
 .phase{color:#ffc74a}
 .buy{border-radius:8px}
 .dots i.on{background:#ffc74a}
+
+/* v5: trolley held vs parked */
+.slot.dim{opacity:.38}
+.slot.on{background:rgba(70,140,255,.18);color:#fff}.slot.on b{color:#9cc4ff}
+.slot.act{pointer-events:auto;cursor:pointer;background:transparent;border:0;font:inherit;font-weight:700;color:#cfe0ff}
+.slot.act:hover{background:rgba(255,255,255,.08)}
+body.touch .slot.act{padding:10px 16px}
