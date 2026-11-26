@@ -1,5 +1,5 @@
 // Un Milione di Gomme: by hand, the trolley, helpers, conveyor belts + robotic arms you build yourself, bigger trucks,
-// the storage rack and the no-deadline contracts board.
+// the storage rack and the no-deadline contracts board, the magnetic pulley on a steel cable, the fascioni machine and the shredder.
 import * as THREE from 'three';
 import * as C from './config.js';
 import { Mountain, N, CELL, ORIGIN, GRAB_LAYERS, SHOW_BURIED, hash2 } from './mountain.js';
@@ -18,6 +18,10 @@ import { buildTruck } from './trucks.js';
 import { buildRack, buildBoard, RACK, BOARD, rackDist } from './depot.js';
 import * as CT from './contracts.js';
 import { BELT_Y } from './belts3d.js';
+import { PulleyWorld } from './pulley.js';
+import { ShredWorld } from './shredder.js';
+import { buildFascioni, FBAY, CUTTER, TABLE, CUT_ZONE, TABLE_ZONE } from './fascioni3d.js';
+import * as F5 from './fase5.js';
 
 const Q = new URLSearchParams(location.search);
 const TEST = Q.has('test');
@@ -468,9 +472,11 @@ function updateBelts(dt) {
     }
     if (p.hopper.length || p.inbound) p.feeding = true;
   }
-  belts.update(dt, sp, beltSinks, (tr, p) => {
-    const e = BL.endPoint(p); const from = new THREE.Vector3(e.x, 0.75, e.z);
-    if (BL.sinkIndex(p, beltSinks) === 1) return storeTire(tr.type, from, { auto: true });
+  const SK = shredders.list.length ? beltSinks.concat(shredders.list.map(q => ({ x: q.x, z: q.z }))) : beltSinks;
+  belts.update(dt, sp, SK, (tr, p) => {
+    const e = BL.endPoint(p); const from = new THREE.Vector3(e.x, 0.75, e.z), k = BL.sinkIndex(p, SK);
+    if (k === 1) return storeTire(tr.type, from, { auto: true });
+    if (k >= 2) return shredFeed(shredders.list[k - 2], tr.type, from, { dur: 0.4, arc: 0.4 });
     return launchToVan(tr.type, from, new THREE.Quaternion(), { auto: true, dur: 0.42, arc: 0.45, spin: 0.3 });
   });
 }
@@ -525,10 +531,11 @@ function contractTick(type, fromRack = false) {
 }
 function completeContract(c) {
   S.money += c.reward; S.stats.earned += c.reward;
-  // the client picks up the tires: they leave the rack
-  let left = c.need; const bays = c.size < 0 ? [0, 1, 2, 3] : [c.size];
-  for (const b of bays) { const k = Math.min(left, S.storage[b]); S.storage[b] -= k; left -= k; if (left <= 0) break; }
-  rack.setCounts(S.storage);
+  // the client picks up the goods: tires leave the rack, bundles leave the fascioni pallet
+  if (CT.kindOf(c) === 'tires') { let left = c.need; const bays = c.size < 0 ? [0, 1, 2, 3] : [c.size];
+    for (const b of bays) { const k = Math.min(left, S.storage[b]); S.storage[b] -= k; left -= k; if (left <= 0) break; }
+    rack.setCounts(S.storage); }
+  else if (CT.kindOf(c) === 'fascioni') { S.fascioni.pallet = Math.max(0, S.fascioni.pallet - c.need); fasc.setState(S.fascioni, fq.queue); }
   sfx.chime(); banner('Contratto completato!', `${c.client}: +${money(c.reward)} · sulla bacheca c'è un nuovo lavoro`); popHUD('+' + money(c.reward), 'big gold');
   pinnedDone = 2.6; lastDone = c; updatePinned(); board.draw(S.contracts.list, S.contracts.active, false); if (ctOpen) renderContracts(); saveNow();
 }
@@ -538,10 +545,10 @@ function updatePinned() {
   if (!playing || !contractsUnlocked() || !c) { el.classList.add('hidden'); return; }
   el.classList.remove('hidden'); el.classList.toggle('done', pinnedDone > 0);
   $('pintitle').textContent = c.client;
-  $('pinsub').textContent = `${c.need} gomme ${c.size < 0 ? 'miste' : CT.SIZE_NAMES[c.size]}`;
+  $('pinsub').textContent = CT.what(c);
   const got = pinnedDone > 0 ? c.need : c.got;
   $('pinbar').style.width = (100 * got / c.need).toFixed(1) + '%';
-  $('pinnum').textContent = `${got} / ${c.need}`;
+  $('pinnum').textContent = `${fmt.format(got)} / ${fmt.format(c.need)}${CT.unit(c)}`;
   $('pinreward').textContent = pinnedDone > 0 ? `Pagato +${money(c.reward)}` : `+${money(c.reward)} alla consegna`;
 }
 function renderContracts() {
@@ -550,7 +557,7 @@ function renderContracts() {
   $('ctdone').textContent = cs.done ? `${cs.done} completat${cs.done > 1 ? 'i' : 'o'} · ${money(cs.earned)} guadagnati` : 'Nessuna scadenza, nessuna penale: prendine uno quando vuoi.';
   cs.list.forEach((c, i) => {
     const el = document.createElement('div'); el.className = 'note' + (c.id === cs.active ? ' on' : ''); el.style.setProperty('--r', (((i * 37) % 7) - 3) * 0.6 + 'deg');
-    el.innerHTML = `<i class="pin"></i><b>${c.client}</b><span class="what">${c.need} gomme ${c.size < 0 ? 'miste' : CT.SIZE_NAMES[c.size]}</span><span class="nt">${c.note}</span><span class="rw">+${money(c.reward)}</span><span class="nodl">⏱ Nessuna scadenza</span>${c.got ? `<div class="pb"><i style="width:${100 * c.got / c.need}%"></i></div><span class="pg">${c.got} / ${c.need}</span>` : ''}`;
+    el.innerHTML = `<i class="pin"></i><b>${c.client}</b><span class="what">${CT.what(c)}</span><span class="nt">${c.note}</span><span class="rw">+${money(c.reward)}</span><span class="nodl">⏱ Nessuna scadenza</span>${c.got ? `<div class="pb"><i style="width:${100 * c.got / c.need}%"></i></div><span class="pg">${fmt.format(c.got)} / ${fmt.format(c.need)}${CT.unit(c)}</span>` : ''}`;
     const btn = document.createElement('button'); btn.className = 'acc';
     if (c.id === cs.active) { btn.textContent = 'In corso · lascia'; btn.onclick = (e) => { e.stopPropagation(); CT.drop(cs); sfx.paper(); renderContracts(); updatePinned(); board.draw(cs.list, cs.active, false); saveNow(); }; }
     else { btn.textContent = cs.active == null ? 'Accetta' : 'Passa a questo'; btn.onclick = (e) => { e.stopPropagation(); acceptContract(c.id); }; }
@@ -593,6 +600,9 @@ function armDest(a, n) {
     for (const k of [0.5, 0.2, 0.8]) { const sv = p.len * k; if (!p.tires.some(t => Math.abs(t.s - sv) < BL.TIRE_GAP)) { BL.pathPoint(p, sv, _pp); bd = d; best = { kind: 'belt', p, s: sv, x: _pp.x, y: BELT_Y + 0.12, z: _pp.z }; break; } }
   }
   if (best) return best;
+  // 1b) a shredder or the fascioni cutter in reach
+  for (const s of shredders.list) if (Math.hypot(s.x - a.x, s.z - a.z) <= ARM_REACH + 0.3 && shredders.accepts(s, n)) return { kind: 'shred', s, x: s.x, y: 2.0, z: s.z };
+  if (fascUnlocked() && Math.hypot(fasc.infeedPos.x - a.x, fasc.infeedPos.z - a.z) <= ARM_REACH && cutterRoom(n)) return { kind: 'cut', x: fasc.infeedPos.x, y: 1.25, z: fasc.infeedPos.z };
   // 2) straight into the vehicle when the arm stands at the tailgate
   const vx = VAN_X + 0.35; if (Math.hypot(vx - a.x, VAN_Z - a.z) <= ARM_REACH + 0.4 && vanCanAccept(n)) return { kind: 'van', x: vx, y: FL + 0.7, z: VAN_Z };
   // 3) the storage rack
@@ -608,41 +618,178 @@ function armRelease(a, type, pos, d) {
   }
   if (d.kind === 'van') return launchToVan(type, pos, new THREE.Quaternion(), { auto: true, dur: 0.3, arc: 0.15, spin: 0.2 });
   if (d.kind === 'rack') return storeTire(type, pos, { auto: true });
+  if (d.kind === 'shred' || d.kind === 'cut') return dropRelease(type, pos, d);
   return false;
 }
 function syncArms() { arms.speed = C.UPG.armSpeed.lv[S.lv.armSpeed]; arms.grab = C.UPG.armGrab.lv[S.lv.armGrab]; }
 arms.load(S.arms); syncArms();
+
+/* ---------------- Fase 5: carrucola magnetica, macchina dei fascioni, trituratore ---------------- */
+const tireFly = { tireMesh: (type) => flyMesh(type), freeMesh: (m) => { scene.remove(m); flyPool.push(m); } };
+function sellTire(type) { const v = C.TIRES[type].value; S.money += v; S.stats.earned += v; S.stats.cleared++; }
+// ---- trituratore ----
+function shredMax() { return C.UPG.shredder.lv[S.lv.shredder]; }
+const shredders = new ShredWorld({ scene, sfx, att, ...tireFly, onShred: (s, type, kg) => onShred(s, type, kg) });
+shredders.load(S.shredders);
+function shredFeed(s, type, from, o = {}) {
+  if (!shredders.list.includes(s) || !shredders.accepts(s)) return false;
+  s.inbound++; const to = shredders.hopperPos(s); to.y += 0.3;
+  startFlight({ kind: 'shred', type, from: from ? from.clone() : to.clone().add(new THREE.Vector3(0, 1.6, 0.8)), q0: new THREE.Quaternion(), to, q1: new THREE.Quaternion(), dur: o.dur || 0.45, arc: o.arc ?? 0.6, spin: 0.3, ease: 'line',
+    done: () => { s.inbound = Math.max(0, s.inbound - 1); if (shredders.list.includes(s)) shredders.feed(s, type); else sellTire(type); } }); // shredder dismantled mid-air: sold, never lost
+  return true;
+}
+function onShred(s, type, kg) {
+  const val = F5.shredValue(type);
+  S.money += val; S.stats.earned += val; S.stats.cleared++; S.stats.shredded++; S.granulate.kg += kg;
+  const sacks = Math.floor(S.granulate.kg / F5.SHRED.SACK);
+  if (sacks > S.granulate.sacks) { S.granulate.sacks = sacks; sfx.thud(2, 0, att(s.x, s.z)); pop(shredders.hopperPos(s), `Sacco pieno! ${fmt.format(S.granulate.kg)} kg`, 'gold'); }
+  else if (popT <= 0) { pop(shredders.hopperPos(s), `+${kg} kg · +${money(val)}`, 'soft'); popT = 0.2; }
+  dust(new THREE.Vector3(s.x, 0.9, s.z), 2);
+  const done = CT.progressKind(S.contracts, 'granulato', kg);
+  if (done) completeContract(done); else if (CT.kindOf(CT.activeOf(S.contracts)) === 'granulato') updatePinned();
+  checkMilestones(); updateHUD();
+}
+// the shredder in front of you (within 2.4 m, roughly in view)
+function nearShredder() {
+  let best = null, bd = 2.6;
+  for (const s of shredders.list) { const dx = s.x - P.x, dz = s.z - P.z, d = Math.hypot(dx, dz); if (d < bd && (d < 1.4 || (-Math.sin(P.yaw) * dx - Math.cos(P.yaw) * dz) / d > 0.35)) { bd = d; best = s; } }
+  return best;
+}
+function tryShred(s = nearShredder()) {
+  if (!s || throwCD > 0) return false;
+  const src = new THREE.Vector3(); let type;
+  if (!holding() && S.hands.length) { type = S.hands[S.hands.length - 1]; handTires[S.hands.length - 1].getWorldPosition(src); }
+  else if (holding() && S.cart.length) { type = S.cart[S.cart.length - 1]; cartTires[S.cart.length - 1].getWorldPosition(src); }
+  else return false;
+  if (!shredders.accepts(s)) { toast('Il trituratore è pieno: un attimo che macina'); sfx.nope(); return true; }
+  if (!holding()) { S.hands.pop(); refreshHands(); } else { S.cart.pop(); refreshCart(); }
+  throwCD = C.PLAYER.throwInterval; sfx.whoosh(0); shredFeed(s, type, src, {}); updateHUD(); return true;
+}
+// ---- macchina dei fascioni ----
+function fascUnlocked() { return S.lv.fascioni >= 1; }
+const fasc = buildFascioni(scene, { mats, colliders, ...tireFly, onCut: (type) => onCut(type) });
+const fq = { queue: [], inbound: 0, pullT: 1, nestCD: 0 }; // tires waiting at the cutter
+function cutterRoom(n = 1) { return fascUnlocked() && fq.queue.length + fq.inbound + n <= 3 && S.fascioni.ready + fq.queue.length + fq.inbound + (fasc.cutting() ? 1 : 0) + n <= F5.FASC.READY_MAX; }
+function cutterFeed(type, from, o = {}) {
+  if (!cutterRoom()) return false;
+  fq.inbound++;
+  startFlight({ kind: 'cut', counted: !!o.counted, type, from: from ? from.clone() : fasc.infeedPos.clone().add(new THREE.Vector3(0, 1.5, 1.2)), q0: new THREE.Quaternion(), to: fasc.infeedPos.clone(), q1: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, Math.PI / 2)), dur: o.dur || 0.5, arc: o.arc ?? 0.5, spin: 0.2, ease: 'line',
+    done: () => { fq.inbound--; fq.queue.push(type); if (!o.counted) S.stats.cleared++; fasc.setState(S.fascioni, fq.queue); } });
+  return true;
+}
+function onCut(type) { S.fascioni.ready++; S.fascioni.cut++; fasc.setState(S.fascioni, fq.queue); if (popT <= 0 && Math.hypot(P.x - CUTTER.x, P.z - CUTTER.z) < 12) { pop(fasc.cutPos.clone(), 'Fascione pronto', 'soft'); popT = 0.3; } }
+const inBox = (b) => P.x > b.x0 && P.x < b.x1 && P.z > b.z0 && P.z < b.z1;
+function inCutZone() { return fascUnlocked() && inBox(CUT_ZONE); }
+function inTableZone() { return fascUnlocked() && inBox(TABLE_ZONE); }
+function tryFeedCutter() {
+  if (!inCutZone() || throwCD > 0) return false;
+  const src = new THREE.Vector3(); let type;
+  if (!holding() && S.hands.length) { type = S.hands[S.hands.length - 1]; handTires[S.hands.length - 1].getWorldPosition(src); }
+  else if (holding() && S.cart.length) { type = S.cart[S.cart.length - 1]; cartTires[S.cart.length - 1].getWorldPosition(src); }
+  else return false;
+  if (!cutterRoom()) { toast(S.fascioni.ready >= F5.FASC.READY_MAX ? 'Il banco è pieno di fascioni: infilali!' : 'La macchina sta tagliando, un attimo'); sfx.nope(); return true; }
+  if (!holding()) { S.hands.pop(); refreshHands(); } else { S.cart.pop(); refreshCart(); }
+  throwCD = C.PLAYER.throwInterval; sfx.whoosh(0); cutterFeed(type, src, {}); updateHUD(); return true;
+}
+// one click at the table = one fascione nested into the stack: "tutun! tutun!"
+function tryNest() {
+  if (!inTableZone()) return false;
+  if (fq.nestCD > 0) return true;
+  const r = F5.nest(S.fascioni);
+  if (!r.ok) { toast(fq.queue.length || fq.inbound || fasc.cutting() ? 'Il prossimo fascione sta arrivando dalla macchina…' : 'Nessun fascione pronto: porta gomme alla macchina o mettile nello scaffale', 1800); sfx.nope(); return true; }
+  fq.nestCD = 0.14; sfx.tutun(r.n); fasc.setState(S.fascioni, fq.queue); fasc.nest(r.n);
+  const tp = new THREE.Vector3(TABLE.x - 0.1, 1.35, TABLE.z);
+  if (r.bundle) {
+    const pay = F5.FASC.BUNDLE_PAY; S.money += pay; S.stats.earned += pay; S.stats.bundles++;
+    sfx.bundle(); fasc.bundleDone(); popHUD('+' + money(pay), 'big'); pop(tp, 'Pila da 10!', 'gold');
+    if (S.fascioni.pallet === 1 && S.fascioni.bundles > 1) toast('Il fornitore ha ritirato il bancale pieno', 2200);
+    const done = CT.progressKind(S.contracts, 'fascioni', 1);
+    if (done) completeContract(done); else updatePinned();
+  } else pop(tp, `${r.n}/${F5.FASC.STACK}`, r.n >= 8 ? 'gold' : 'soft');
+  updateHUD(); return true;
+}
+function updateFascioni(dt) {
+  if (!fascUnlocked()) return;
+  fq.nestCD = Math.max(0, fq.nestCD - dt);
+  if (!fasc.cutting() && fq.queue.length) { const type = fq.queue.shift(); fasc.startCut(flyMesh(type), type); sfx.cutter(att(CUTTER.x, CUTTER.z)); fasc.setState(S.fascioni, fq.queue); }
+  // the cutter pulls tires from the storage rack next door (when you're not feeding it yourself)
+  fq.pullT -= dt;
+  if (fq.pullT <= 0) {
+    fq.pullT = F5.FASC.RACK_PULL_T;
+    if (cutterRoom()) { let b = -1, best = 0; for (let i = 0; i < 4; i++) if (S.storage[i] > best) { best = S.storage[i]; b = i; }
+      if (b >= 0) { S.storage[b]--; rack.setCounts(S.storage); cutterFeed(b, rack.slotPos(b, S.storage[b]), { counted: true, dur: 0.8, arc: 0.9 }); } }
+  }
+  fasc.update(dt);
+}
+// ---- carrucola magnetica ----
+function pulleyMax() { return C.UPG.pulley.lv[S.lv.pulley]; }
+const pulleys = new PulleyWorld({
+  scene, sfx, att, ...tireFly,
+  source: (l) => autoPeek(l.geo.P.x, l.geo.P.z, F5.PULLEY.PICK_R),
+  take: (l, at, n) => { const out = []; for (let i = 0; i < n; i++) { const g = autoTake(l.geo.P.x, l.geo.P.z, F5.PULLEY.PICK_R); if (!g) break; out.push(g.type); } if (out.length) { sfx.grab(1, 0, att(l.geo.P.x, l.geo.P.z) * 0.6); dust(new THREE.Vector3(l.geo.P.x, at.y, l.geo.P.z), 5); } return out; },
+  dest: (l, n) => dropDest(l.geo.D.x, l.geo.D.z, F5.PULLEY.DROP_R, n),
+  release: (l, type, pos, d) => dropRelease(type, pos, d),
+});
+function syncPulleys() { pulleys.speed = C.UPG.cableSpeed.lv[S.lv.cableSpeed]; pulleys.grab = C.UPG.magnet.lv[S.lv.magnet]; }
+pulleys.load(S.pulleys); syncPulleys();
+// where a load dropped at (x, z) can go: the vehicle, a shredder, the fascioni cutter, a belt with room, the rack
+function dropDest(x, z, R, n = 1) {
+  const vx = VAN_X + 0.6; if (Math.hypot(vx - x, VAN_Z - z) <= R + 1.2 && vanCanAccept(1)) return { kind: 'van', x: vx, y: FL + 1.0, z: VAN_Z };
+  for (const s of shredders.list) if (Math.hypot(s.x - x, s.z - z) <= R && shredders.accepts(s)) return { kind: 'shred', s, x: s.x, y: 2.1, z: s.z };
+  if (fascUnlocked() && Math.hypot(fasc.infeedPos.x - x, fasc.infeedPos.z - z) <= R && cutterRoom()) return { kind: 'cut', x: fasc.infeedPos.x, y: 1.3, z: fasc.infeedPos.z };
+  let best = null, bd = 1e9;
+  for (const p of belts.pieces) { if (p.type === 'intake') continue; const c = BL.cellCenter(p.gx, p.gz), d = Math.hypot(c.x - x, c.z - z); if (d > R || d >= bd) continue; if (p.tires.length < Math.floor(p.len / BL.TIRE_GAP)) { bd = d; best = { kind: 'belt', p, x: c.x, y: BELT_Y + 0.1, z: c.z }; } }
+  if (best) return best;
+  if (contractsUnlocked() && rackDist(x, z) <= R && rackFree() >= 1) return { kind: 'rack', x: Math.max(RACK.x0 + 0.4, Math.min(RACK.x1 - 0.4, x)), y: 1.6, z: RACK.zFront + 0.25 };
+  return null;
+}
+function dropRelease(type, pos, d) {
+  if (!d) return false;
+  switch (d.kind) {
+    case 'van': return launchToVan(type, pos, new THREE.Quaternion(), { auto: true, dur: 0.38 + Math.random() * 0.2, arc: 0.3, spin: 0.4 });
+    case 'shred': return shredFeed(d.s, type, pos, { dur: 0.4, arc: 0.15 });
+    case 'cut': return cutterFeed(type, pos, { dur: 0.45, arc: 0.2 });
+    case 'belt': { if (!belts.pieces.includes(d.p)) return false; for (const k of [0.5, 0.15, 0.85, 0.32, 0.68]) if (belts.logic.insertAt(d.p, d.p.len * k, { type, s: 0, spin: Math.random() * 6.28 })) return true; return false; }
+    case 'rack': return storeTire(type, pos, { auto: true });
+  }
+  return false;
+}
 // pieces left where the yard changed (the new rack, a longer vehicle at the bay): dismantled with a full refund, never lost
 function vehicleBay(tier = VEH_MAX) { const v = C.VEHICLES[tier], len = v.cargo.L + (tier >= 3 ? 3.6 : tier >= 2 ? 2.8 : 2.1), hw = v.cargo.W / 2 + 0.2; return { x0: VAN_X - 0.15, x1: VAN_X + len, z0: VAN_Z - hw, z1: VAN_Z + hw }; }
 const overlap = (a, b, pad = 0) => a.x0 < b.x1 + pad && a.x1 > b.x0 - pad && a.z0 < b.z1 + pad && a.z1 > b.z0 - pad;
 function evictPieces() {
   const bay = vehicleBay(Math.max(S.vehicle, S.lv.vehicle)); let refund = 0, n = 0;
-  for (const p of belts.pieces.slice()) { const f = BeltWorld.footprint(p.type, p.gx, p.gz, p.rot); if (overlap(f, bay) || colliders.some(c => overlap(f, c))) { refund += BL.PIECES[p.type].cost; for (const t of p.tires.concat(p.hopper.map(type => ({ type })))) refund += C.TIRES[t.type].value; belts.remove(p); n++; } }
-  for (const a of arms.list.slice()) { const f = ArmWorld.footprint(a.gx, a.gz); if (overlap(f, bay) || colliders.some(c => overlap(f, c))) { refund += ARM_COST; for (const t of arms.remove(a)) refund += C.TIRES[t].value; n++; } }
-  if (n) { S.money += refund; S.belts = belts.logic.serialize(); S.arms = arms.serialize(); toast(`${n} pezz${n > 1 ? 'i' : 'o'} nel posto del mezzo o dello scaffale: smontat${n > 1 ? 'i' : 'o'}, +${money(refund)}`, 3500); }
+  for (const p of belts.pieces.slice()) { const f = BeltWorld.footprint(p.type, p.gx, p.gz, p.rot); if (overlap(f, bay) || overlap(f, FBAY) || colliders.some(c => overlap(f, c))) { refund += BL.PIECES[p.type].cost; for (const t of p.tires.concat(p.hopper.map(type => ({ type })))) refund += C.TIRES[t.type].value; belts.remove(p); n++; } }
+  for (const a of arms.list.slice()) { const f = ArmWorld.footprint(a.gx, a.gz); if (overlap(f, bay) || overlap(f, FBAY) || colliders.some(c => overlap(f, c))) { refund += ARM_COST; for (const t of arms.remove(a)) refund += C.TIRES[t].value; n++; } }
+  for (const l of pulleys.list.slice()) { if ([l.a, l.b].some(c => { const f = PulleyWorld.footprint(c.gx, c.gz); return overlap(f, bay) || overlap(f, FBAY) || colliders.some(k => overlap(f, k)); })) { refund += F5.PULLEY.COST; for (const t of pulleys.remove(l)) refund += C.TIRES[t].value; n++; } }
+  for (const q of shredders.list.slice()) { const f = ShredWorld.footprint(q.gx, q.gz); if (overlap(f, bay) || overlap(f, FBAY) || colliders.some(c => overlap(f, c))) { refund += F5.SHRED.COST; for (const t of shredders.remove(q)) refund += C.TIRES[t].value; n++; } }
+  if (n) { S.money += refund; S.belts = belts.logic.serialize(); S.arms = arms.serialize(); S.pulleys = pulleys.serialize(); S.shredders = shredders.serialize(); toast(`${n} pezz${n > 1 ? 'i' : 'o'} nel posto del mezzo o dello scaffale: smontat${n > 1 ? 'i' : 'o'}, +${money(refund)}`, 3500); }
   return n;
 }
 function intakeIndex(p) { let k = 0; for (const q of belts.pieces) { if (q === p) return k; if (q.type === 'intake') k++; } return k; }
 const build = { on: false, piece: 'straight', rot: 0, gx: 0, gz: 0, aim: false, valid: false, reason: '', del: null };
-const PINFO = { ...BL.PIECES, arm: { key: '5', name: 'Braccio meccanico', short: 'Braccio', cost: ARM_COST } };
-function buildOrder() { return S.lv.arm >= 1 ? [...BL.PIECE_ORDER, 'arm'] : BL.PIECE_ORDER; }
+const PINFO = { ...BL.PIECES, arm: { key: '5', name: 'Braccio meccanico', short: 'Braccio', cost: ARM_COST }, pulley: { key: '6', name: 'Carrucola magnetica', short: 'Carrucola', cost: F5.PULLEY.COST }, shredder: { key: '7', name: 'Trituratore', short: 'Trituratore', cost: F5.SHRED.COST } };
+function buildOrder() { const o = [...BL.PIECE_ORDER]; if (S.lv.arm >= 1) o.push('arm'); if (S.lv.pulley >= 1) o.push('pulley'); if (S.lv.shredder >= 1) o.push('shredder'); return o; }
 function buildUnlocked() { return S.lv.belt >= 1; }
 function enterBuild() {
   if (!buildUnlocked() || !playing) return;
   build.on = true; actionHeld = false; document.body.classList.add('building'); $('buildbar').classList.remove('hidden'); renderBuildBar(); sfx.click();
 }
-function exitBuild() { build.on = false; document.body.classList.remove('building'); $('buildbar').classList.add('hidden'); belts.showPreview(null); arms.showPreview(null); updateHUD(); }
+function exitBuild() { build.on = false; build.pylonA = null; document.body.classList.remove('building'); $('buildbar').classList.add('hidden'); belts.showPreview(null); arms.showPreview(null); pulleys.showPreview(null); shredders.showPreview(null); updateHUD(); }
 const _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), _hit = new THREE.Vector3();
 function updateBuildAim() {
   camera.updateMatrixWorld(); ray.setFromCamera(lastAimNDC, camera);
-  build.aim = false; build.del = null; arms.showPreview(null);
+  build.aim = false; build.del = null; arms.showPreview(null); pulleys.showPreview(null); shredders.showPreview(null);
   if (!ray.ray.intersectPlane(_plane, _hit)) { belts.showPreview(null); return; }
   const d = Math.hypot(_hit.x - P.x, _hit.z - P.z); if (d > 11) { belts.showPreview(null); return; }
   const c = BL.worldToCell(_hit.x, _hit.z); build.gx = c.gx; build.gz = c.gz; build.aim = true;
-  const ex = belts.logic.at(c.gx, c.gz) || arms.at(c.gx, c.gz);
+  const ex = build.pylonA ? null : belts.logic.at(c.gx, c.gz) || arms.at(c.gx, c.gz) || pulleys.at(c.gx, c.gz) || shredders.at(c.gx, c.gz);
+  if (ex && (ex.type === 'pulley' || ex.type === 'shredder')) { build.del = ex; build.valid = false; build.reason = 'del'; belts.showPreview(null); belts.grid.visible = true; if (ex.type === 'pulley') pulleys.showPreview(ex.a, ex.b, 'del', ex.pick); else shredders.showPreview(ex.gx, ex.gz, ex.rot, 'del'); return; }
   if (ex) { build.del = ex; build.valid = false; build.reason = 'del'; if (ex.type === 'arm') { belts.showPreview(null); belts.grid.visible = true; arms.showPreview(ex.gx, ex.gz, ex.rot, 'del'); } else belts.showPreview(ex.type, ex.gx, ex.gz, ex.rot, 'del'); return; }
   const r = placeCheck(build.piece, c.gx, c.gz, build.rot); build.valid = r === ''; build.reason = r;
   if (build.piece === 'arm') { belts.showPreview(null); const cc = BL.cellCenter(c.gx, c.gz); belts.grid.visible = true; belts.grid.position.set(cc.x, 0.03, cc.z); arms.showPreview(c.gx, c.gz, build.rot, build.valid ? 'ok' : 'bad'); }
+  else if (build.piece === 'pulley') { belts.showPreview(null); const cc = BL.cellCenter(c.gx, c.gz); belts.grid.visible = true; belts.grid.position.set(cc.x, 0.03, cc.z); if (build.pylonA) pulleys.showPreview(build.pylonA, { gx: c.gx, gz: c.gz }, build.valid ? 'ok' : 'bad', build.pick || null); else pulleys.showPreview({ gx: c.gx, gz: c.gz }, null, build.valid ? 'ok' : 'bad'); }
+  else if (build.piece === 'shredder') { belts.showPreview(null); const cc = BL.cellCenter(c.gx, c.gz); belts.grid.visible = true; belts.grid.position.set(cc.x, 0.03, cc.z); shredders.showPreview(c.gx, c.gz, build.rot, build.valid ? 'ok' : 'bad'); }
   else belts.showPreview(build.piece, c.gx, c.gz, build.rot, build.valid ? 'ok' : 'bad');
 }
 function mountainNear(x, z, R) {
@@ -650,13 +797,20 @@ function mountainNear(x, z, R) {
   for (let j = cj - r; j <= cj + r; j++) for (let i = ci - r; i <= ci + r; i++) { if (i < 0 || j < 0 || i >= N || j >= N) continue; const c = j * N + i; if (mountain.count[c] && Math.hypot(ORIGIN.x + i + 0.5 - x, ORIGIN.z + j + 0.5 - z) <= R) return true; }
   return false;
 }
+function footprintOf(type, gx, gz, rot) { return type === 'arm' ? ArmWorld.footprint(gx, gz) : (type === 'pylon' || type === 'pulley') ? PulleyWorld.footprint(gx, gz) : type === 'shredder' ? ShredWorld.footprint(gx, gz) : BeltWorld.footprint(type, gx, gz, rot); }
+const isBeltType = t => !!BL.PIECES[t];
 function placeCheck(type, gx, gz, rot) {
-  const f = type === 'arm' ? ArmWorld.footprint(gx, gz) : BeltWorld.footprint(type, gx, gz, rot), cc = BL.cellCenter(gx, gz);
+  if (type === 'pulley' && !build.pylonA) type = 'pylon';
+  const f = footprintOf(type, gx, gz, rot), cc = BL.cellCenter(gx, gz), costKey = type === 'pylon' ? 'pulley' : type;
   if (f.x0 < FENCE.x0 + 1 || f.x1 > FENCE.x1 - 1 || f.z0 < FENCE.z0 + 1 || f.z1 > FENCE.z1 - 1) return 'Fuori dal piazzale';
   for (const b of colliders) if (f.x0 < b.x1 + 0.1 && f.x1 > b.x0 - 0.1 && f.z0 < b.z1 + 0.1 && f.z1 > b.z0 - 0.1) return 'C\'è qualcosa in mezzo';
   if (overlap(f, vehicleBay(VEH_MAX))) return 'Qui parcheggiano i mezzi (fino al bilico)';
+  if (overlap(f, FBAY)) return 'Qui c\'è la zona dei fascioni';
   if (arms.list.some(a => overlap(f, ArmWorld.footprint(a.gx, a.gz), 0.05))) return 'C\'è un braccio meccanico';
-  if (type === 'arm' && belts.pieces.some(p => overlap(f, BeltWorld.footprint(p.type, p.gx, p.gz, p.rot), 0.05))) return 'C\'è un nastro: mettilo nella casella accanto';
+  if (pulleys.list.some(l => [l.a, l.b].some(q => overlap(f, PulleyWorld.footprint(q.gx, q.gz), 0.05)))) return 'C\'è un pilone della carrucola';
+  if (shredders.list.some(q => overlap(f, ShredWorld.footprint(q.gx, q.gz), 0.05))) return 'C\'è un trituratore';
+  if (type === 'pulley' && build.pylonA && overlap(f, PulleyWorld.footprint(build.pylonA.gx, build.pylonA.gz), 0.3)) return 'Il pilone B va più lontano dal pilone A';
+  if (!isBeltType(type) && belts.pieces.some(p => overlap(f, BeltWorld.footprint(p.type, p.gx, p.gz, p.rot), 0.05))) return 'C\'è un nastro: mettilo nella casella accanto';
   if (P.x > f.x0 - 0.3 && P.x < f.x1 + 0.3 && P.z > f.z0 - 0.3 && P.z < f.z1 + 0.3) return 'Ci sei in mezzo tu: fai un passo indietro';
   if (st.cart > 0 && !S.cartHeld && S.cartPos && S.cartPos.x > f.x0 - 0.4 && S.cartPos.x < f.x1 + 0.4 && S.cartPos.z > f.z0 - 0.4 && S.cartPos.z < f.z1 + 0.4) return 'C\'è il carrello posato';
   const hs = [[cc.x, cc.z], [f.x0 + 0.1, f.z0 + 0.1], [f.x1 - 0.1, f.z0 + 0.1], [f.x0 + 0.1, f.z1 - 0.1], [f.x1 - 0.1, f.z1 - 0.1]].map(([x, z]) => meshH(x, z));
@@ -664,6 +818,21 @@ function placeCheck(type, gx, gz, rot) {
     if (Math.max(...hs) > 0.6) return 'Troppo dentro la montagna: mettilo ai piedi del mucchio';
     if (!mountainNear(cc.x, cc.z, ARM_REACH - 0.3)) return 'Troppo lontano dalla montagna: il braccio deve arrivare al mucchio';
     if (arms.count() >= armMax()) return `${armMax() === 1 ? 'Massimo 1 braccio' : `Massimo ${armMax()} bracci`}: compra un altro livello di Bracci meccanici`;
+  } else if (type === 'pylon' || type === 'pulley') {
+    if (Math.max(...hs) > 0.6) return 'Troppo dentro la montagna: il pilone va ai piedi del mucchio';
+    if (pulleys.count() >= pulleyMax()) return `${pulleyMax() === 1 ? 'Massimo 1 carrucola' : `Massimo ${pulleyMax()} carrucole`}: compra un altro livello di Carrucola magnetica`;
+    if (type === 'pulley') {
+      const a = build.pylonA, b = { gx, gz }, L = F5.lineLen(a, b);
+      if (L < F5.PULLEY.MIN) return `Cavo troppo corto: allontana il pilone B (min ${F5.PULLEY.MIN} m)`;
+      if (L > F5.PULLEY.MAX) return `Cavo troppo lungo: avvicina il pilone B (max ${F5.PULLEY.MAX} m)`;
+      const gA = PulleyWorld.geom(a, b, 'a'), gB = PulleyWorld.geom(a, b, 'b');
+      const nA = mountainNear(gA.P.x, gA.P.z, F5.PULLEY.PICK_R), nB = mountainNear(gB.P.x, gB.P.z, F5.PULLEY.PICK_R);
+      if (!nA && !nB) { build.pick = null; return 'Un capo del cavo deve arrivare sopra la montagna'; }
+      build.pick = nA && nB ? (meshH(gA.P.x, gA.P.z) >= meshH(gB.P.x, gB.P.z) ? 'a' : 'b') : nA ? 'a' : 'b';
+    }
+  } else if (type === 'shredder') {
+    if (Math.max(...hs) > 0.1) return 'Sulla montagna non si costruisce';
+    if (shredders.count() >= shredMax()) return `${shredMax() === 1 ? 'Massimo 1 trituratore' : `Massimo ${shredMax()} trituratori`}: compra un altro livello di Trituratore`;
   } else if (type === 'intake') {
     if (hs[0] > 0.6) return 'Troppo dentro la montagna: mettilo ai piedi del mucchio';
     const b = BL.backPoint({ type, gx, gz, rot }); let near = false;
@@ -672,15 +841,22 @@ function placeCheck(type, gx, gz, rot) {
     if (!near) return 'Troppo lontano dalla montagna: il retro deve toccare il mucchio';
     if (belts.logic.count('intake') >= intakeMax()) return `Massimo ${intakeMax()} caricator${intakeMax() > 1 ? 'i' : 'e'}: compra un altro livello di Nastri`;
   } else if (Math.max(...hs) > 0.1) return 'Sulla montagna non si costruisce';
-  if (S.money < PINFO[type].cost) return `Ti mancano ${money(PINFO[type].cost - S.money)}`;
+  if (S.money < PINFO[costKey].cost) return `Ti mancano ${money(PINFO[costKey].cost - S.money)}`;
   return '';
 }
 function placePiece() {
   if (!build.on || !build.aim || build.del) return false;
   const r = placeCheck(build.piece, build.gx, build.gz, build.rot);
   if (r) { toast(r, 1600); sfx.nope(); return false; }
+  const at = BL.cellCenter(build.gx, build.gz);
+  if (build.piece === 'pulley' && !build.pylonA) { // click 1: pylon A (paid when the line is complete)
+    build.pylonA = { gx: build.gx, gz: build.gz }; build.pick = null; sfx.clunk(); dust(new THREE.Vector3(at.x, 0.2, at.z), 6);
+    toast(isTouch ? 'Pilone A piazzato: ora tocca dove mettere il pilone B' : 'Pilone A piazzato: ora punta dove mettere il pilone B (Esc annulla)', 2600); renderBuildBar(); return true;
+  }
   const cost = PINFO[build.piece].cost; S.money -= cost;
-  if (build.piece === 'arm') { arms.add(build.gx, build.gz, build.rot); S.arms = arms.serialize(); }
+  if (build.piece === 'pulley') { pulleys.add(build.pylonA, { gx: build.gx, gz: build.gz }, build.pick || 'a'); S.pulleys = pulleys.serialize(); build.pylonA = null; build.pick = null; sfx.magnetOn(0.6); toast('Carrucola montata: il magnete pesca dal capo sopra la montagna e scarica dall\'altro', 2600); }
+  else if (build.piece === 'shredder') { shredders.add(build.gx, build.gz, build.rot); S.shredders = shredders.serialize(); }
+  else if (build.piece === 'arm') { arms.add(build.gx, build.gz, build.rot); S.arms = arms.serialize(); }
   else { belts.add(build.piece, build.gx, build.gz, build.rot); S.belts = belts.logic.serialize(); }
   sfx.clunk(); dust(new THREE.Vector3(BL.cellCenter(build.gx, build.gz).x, 0.2, BL.cellCenter(build.gx, build.gz).z), 6);
   // nice touch: after a straight, the next piece keeps the direction of the line
@@ -688,6 +864,12 @@ function placePiece() {
 }
 function dismantle(p = build.del) {
   if (!p) return false;
+  if (p.type === 'pulley' || p.type === 'shredder') {
+    const types = p.type === 'pulley' ? pulleys.remove(p) : shredders.remove(p), cost = PINFO[p.type].cost; let v = 0; for (const t of types) { v += C.TIRES[t].value; S.stats.cleared++; } S.money += cost + v; S.stats.earned += v;
+    S.pulleys = pulleys.serialize(); S.shredders = shredders.serialize();
+    sfx.unclunk(); toast(`Smontato: +${money(cost)}${types.length ? ` (+${types.length} gomm${types.length > 1 ? 'e' : 'a'} vendute)` : ''}`, 1400);
+    renderBuildBar(); updateHUD(); saveNow(); return true;
+  }
   if (p.type === 'arm') {
     const types = arms.remove(p); let v = 0; for (const t of types) { v += C.TIRES[t].value; S.stats.cleared++; } S.money += ARM_COST + v; S.stats.earned += v; S.arms = arms.serialize();
     sfx.unclunk(); toast(`Smontato: +${money(ARM_COST)}${types.length ? ` (+${types.length} gomm${types.length > 1 ? 'e' : 'a'} vendute)` : ''}`, 1400);
@@ -699,13 +881,15 @@ function dismantle(p = build.del) {
   sfx.unclunk(); toast(`Smontato: +${money(cost)}${lost ? ` (+${lost} gomm${lost > 1 ? 'e' : 'a'} vendute)` : ''}`, 1400);
   renderBuildBar(); updateHUD(); saveNow(); return true;
 }
-function setPiece(k) { build.piece = k; renderBuildBar(); sfx.click(); }
+function setPiece(k) { build.piece = k; build.pylonA = null; build.pick = null; renderBuildBar(); sfx.click(); }
 function rotatePiece() { build.rot = (build.rot + 1) % 4; sfx.click(); }
 const PIECE_SVG = {
   straight: '<svg viewBox="0 0 40 40"><rect x="4" y="12" width="32" height="16" rx="2" fill="#24262a" stroke="#c9ced3" stroke-width="2"/><path d="M11 15l5 5-5 5M21 15l5 5-5 5" stroke="#fff" stroke-width="2.6" fill="none"/></svg>',
   curveR: '<svg viewBox="0 0 40 40"><path d="M4 12h8a16 16 0 0 1 16 16v8H12v-8a0 0 0 0 0 0 0H4z" fill="#24262a"/><path d="M4 12h6a20 20 0 0 1 20 20v4M4 28h2a8 8 0 0 1 8 8" stroke="#c9ced3" stroke-width="2" fill="none"/><path d="M10 18l5 3-3 5" stroke="#fff" stroke-width="2.4" fill="none"/></svg>',
   curveL: '<svg viewBox="0 0 40 40" style="transform:scaleY(-1)"><path d="M4 12h8a16 16 0 0 1 16 16v8H12v-8a0 0 0 0 0 0 0H4z" fill="#24262a"/><path d="M4 12h6a20 20 0 0 1 20 20v4M4 28h2a8 8 0 0 1 8 8" stroke="#c9ced3" stroke-width="2" fill="none"/><path d="M10 18l5 3-3 5" stroke="#fff" stroke-width="2.4" fill="none"/></svg>',
   arm: '<svg viewBox="0 0 40 40"><rect x="6" y="31" width="14" height="6" fill="#33383d" stroke="#c9ced3" stroke-width="1.2"/><path d="M13 31V26l9-12 10 4" stroke="#e86a12" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="26" r="2.6" fill="#141516"/><circle cx="22" cy="14" r="2.4" fill="#141516"/><path d="M32 18v6M29 25l3 4 3-4" stroke="#c9ced3" stroke-width="2" fill="none"/></svg>',
+  pulley: '<svg viewBox="0 0 40 40"><path d="M6 37V8M4 37h5M30 37V8M28 37h5" stroke="#8d989f" stroke-width="3"/><path d="M2 9h36" stroke="#c9ced3" stroke-width="1.6"/><rect x="15" y="8" width="8" height="5" fill="#e2a91e"/><path d="M19 13v9" stroke="#c9ced3" stroke-width="1.2"/><rect x="13" y="22" width="12" height="4" rx="1" fill="#2b2f33" stroke="#b8692e" stroke-width="1.4"/><circle cx="16" cy="30" r="3" fill="none" stroke="#c9ced3" stroke-width="1.6"/><circle cx="22" cy="30" r="3" fill="none" stroke="#c9ced3" stroke-width="1.6"/></svg>',
+  shredder: '<svg viewBox="0 0 40 40"><path d="M6 10h28l-5 9H11z" fill="#5b6b3a" stroke="#c9ced3" stroke-width="1.4"/><rect x="10" y="19" width="20" height="15" fill="#5b6b3a" stroke="#c9ced3" stroke-width="1.4"/><circle cx="16" cy="17" r="3" fill="#8a9096"/><circle cx="24" cy="17" r="3" fill="#8a9096"/><rect x="10" y="27" width="20" height="3" fill="#e2a91e"/><path d="M30 24l6 4v6h-6" fill="#d9cfb4"/></svg>',
   intake: '<svg viewBox="0 0 40 40"><path d="M4 8h18l-4 12H8z" fill="#e2a91e" stroke="#1a1a1a" stroke-width="1.5"/><rect x="14" y="20" width="22" height="10" rx="2" fill="#24262a" stroke="#c9ced3" stroke-width="2"/><path d="M22 22l4 3-4 3M29 22l4 3-4 3" stroke="#fff" stroke-width="2" fill="none"/><circle cx="7" cy="30" r="5" fill="none" stroke="#c9ced3" stroke-width="2"/></svg>',
 };
 function renderBuildBar() {
@@ -713,7 +897,7 @@ function renderBuildBar() {
   if (!buildOrder().includes(build.piece)) build.piece = 'straight';
   for (const k of buildOrder()) {
     const P0 = PINFO[k], b = document.createElement('button'); b.className = 'piece' + (build.piece === k ? ' on' : '') + (S.money < P0.cost ? ' poor' : '') + (k === 'arm' ? ' armp' : '');
-    const extra = k === 'intake' ? ` · ${belts.logic.count('intake')}/${intakeMax()}` : k === 'arm' ? ` · ${arms.count()}/${armMax()}` : '';
+    const extra = k === 'intake' ? ` · ${belts.logic.count('intake')}/${intakeMax()}` : k === 'arm' ? ` · ${arms.count()}/${armMax()}` : k === 'pulley' ? ` · ${pulleys.count()}/${pulleyMax()}` : k === 'shredder' ? ` · ${shredders.count()}/${shredMax()}` : '';
     b.innerHTML = `<kbd class="k">${P0.key}</kbd><span class="pi">${PIECE_SVG[k]}</span><b>${P0.short}</b><i>${money(P0.cost)}${extra}</i>`;
     b.onclick = (e) => { e.stopPropagation(); setPiece(k); }; box.appendChild(b);
   }
@@ -772,11 +956,16 @@ const REQ = {
   arm: [lv => lv.belt >= 1, 'Prima sblocca i nastri'],
   armSpeed: [lv => lv.arm >= 1, 'Prima compra un braccio meccanico'],
   armGrab: [lv => lv.arm >= 1, 'Prima compra un braccio meccanico'],
+  pulley: [lv => lv.arm >= 1, 'Prima compra un braccio meccanico'],
+  magnet: [lv => lv.pulley >= 1, 'Prima compra la carrucola magnetica'],
+  cableSpeed: [lv => lv.pulley >= 1, 'Prima compra la carrucola magnetica'],
+  fascioni: [lv => lv.arm >= 1, 'Prima compra un braccio meccanico'],
+  shredder: [lv => lv.arm >= 1, 'Prima compra un braccio meccanico'],
 };
 const reqMsg = id => { const m = REQ[id][1]; return typeof m === 'function' ? m(S.lv) : m; };
 const VEH_DESC = ['', 'Cassone più lungo e più alto: 96 gomme a viaggio.', 'Camion con cassone da 7 metri e ruote gemellate: 350 gomme a viaggio e un bonus bello grosso.', 'Il bilico: motrice e semirimorchio da 13 metri e mezzo. 840 gomme a viaggio.'];
 // what this build sells: phases 1-3 (the rest of the shop arrives with the next versions)
-function shopSections() { const v4 = S.lv.vehicle >= 1; return [[1, 'A mano', ['shoes', 'gloves', 'grip']], [2, 'Il carrello', ['cart']], [3, 'Aiutanti e nastri', ['helper', 'helperCart', ...(v4 ? [] : ['vehicle']), 'belt', 'beltSpeed']], [4, 'Bracci meccanici, camion e bilico', ['arm', 'armSpeed', 'armGrab', ...(v4 ? ['vehicle'] : [])]]]; }
+function shopSections() { const v4 = S.lv.vehicle >= 1; return [[1, 'A mano', ['shoes', 'gloves', 'grip']], [2, 'Il carrello', ['cart']], [3, 'Aiutanti e nastri', ['helper', 'helperCart', ...(v4 ? [] : ['vehicle']), 'belt', 'beltSpeed']], [4, 'Bracci meccanici, camion e bilico', ['arm', 'armSpeed', 'armGrab', ...(v4 ? ['vehicle'] : [])]], [5, 'Carrucola magnetica, fascioni e trituratore', ['pulley', 'magnet', 'cableSpeed', 'fascioni', 'shredder']]]; }
 const SOLD = new Set(shopSections().flatMap(x => x[2]).concat(['vehicle']));
 const MAXV = { vehicle: VEH_MAX };
 function maxLv(id) { return Math.min(C.maxLevel(id), MAXV[id] ?? 99); }
@@ -788,25 +977,32 @@ function fmtVal(u, v) {
   if (u.id === 'belt') return v ? `${v} caricator${v > 1 ? 'i' : 'e'}` : 'bloccati';
   if (u.id === 'vehicle') { const k = C.VEHICLES[v]; return `${k.name} · ${k.cap} gomme`; }
   if (u.id === 'arm') return v ? `${v} bracci${v === 1 ? 'o' : ''}`.replace('braccii', 'braccio').replace('bracciio', 'braccio') : 'nessuno';
-  if (u.id === 'armGrab') return `${v} gomm${v > 1 ? 'e' : 'a'} a presa`;
+  if (u.id === 'armGrab' || u.id === 'magnet') return `${v} gomm${v > 1 ? 'e' : 'a'} a presa`;
+  if (u.id === 'pulley') return v ? `${v} line${v > 1 ? 'e' : 'a'}` : 'nessuna';
+  if (u.id === 'fascioni') return v ? 'installata' : 'non installata';
+  if (u.id === 'shredder') return v ? (v === 1 ? '1 trituratore' : `${v} trituratori`) : 'nessuno';
   return String(v).replace('.', ',') + ' ' + u.unit;
 }
 const HELPER_NAMES = ['Beppino', 'Ottavio', 'Gino', 'Salvo', 'Tonino'];
 function buy(id) {
   const u = C.UPG[id], lv = S.lv[id], c = C.costOf(id, lv);
   if (!canBuy(id)) return false;
-  S.money -= c; S.lv[id]++; st = C.stats(S.lv); sfx.buy();
+  S.money -= c; S.lv[id]++; st = C.stats(S.lv); sfx.buy(); const nb0 = bannerQ.length;
   if (id === 'cart' && S.lv.cart === 1) { S.cartHeld = true; while (S.hands.length && S.cart.length < st.cart) S.cart.push(S.hands.shift()); if (S.hands.length) { S.cartHeld = false; parkSpot(true); } banner('Fase 2: il carrello', isTouch ? 'Le gomme vanno sul carrello. Tocca «Posa carrello» per lasciarlo giù.' : 'Le gomme vanno sul carrello. Premi Q per posarlo, E per riprenderlo.'); }
   else if (id === 'helper') { const n = C.UPG.helper.lv[S.lv.helper], nm = HELPER_NAMES[n - 1] || 'Un aiutante';
     banner(n === 1 ? 'Fase 3: arriva Beppino!' : `${nm} si unisce alla squadra`, n === 1 ? 'Porta le gomme al furgone da solo. Col secondo aiutante se le passano rotolando.' : 'In fila dalla montagna al furgone: se le passano facendole rotolare. Non metterti in mezzo…'); }
   else if (id === 'belt') banner(S.lv.belt === 1 ? 'Fase 3: nastri trasportatori' : 'Un caricatore in più', isTouch ? 'Tocca «Costruisci» e piazza i pezzi: caricatore ai piedi della montagna, nastro fino al furgone.' : 'Premi C per costruire: caricatore ai piedi della montagna, nastro fino al furgone.');
   else if (id === 'arm') banner(S.lv.arm === 1 ? 'Fase 4: bracci meccanici!' : 'Un braccio in più', isTouch ? 'Tocca «Costruisci», scegli il braccio e piazzalo ai piedi della montagna, accanto a un nastro.' : 'Premi C, tasto 5: piazza il braccio ai piedi della montagna, accanto a un nastro.');
+  else if (id === 'pulley') banner(S.lv.pulley === 1 ? 'Fase 5: carrucola magnetica!' : 'Una linea in più', isTouch ? 'Tocca «Costruisci», scegli la carrucola: pilone A ai piedi della montagna, poi il pilone B vicino al mezzo.' : 'Premi C, tasto 6: pilone A ai piedi della montagna, poi il pilone B vicino al mezzo (o a un nastro).');
+  else if (id === 'fascioni') { banner('Fase 5: macchina dei fascioni!', 'È accanto allo scaffale: infila i fascioni sul banco (tutun tutun). Ti ho lasciato 10 fascioni già tagliati.'); S.fascioni.ready = Math.max(S.fascioni.ready, 10); fasc.setUnlocked(true); fasc.setState(S.fascioni, fq.queue); CT.inject(S.contracts, 'fascioni'); }
+  else if (id === 'shredder') { banner(S.lv.shredder === 1 ? 'Fase 5: trituratore!' : 'Un trituratore in più', isTouch ? 'Tocca «Costruisci» e piazzalo: lo nutri a mano, coi nastri, coi bracci o con la carrucola. Il granulato si vende a peso.' : 'Premi C, tasto 7 e piazzalo: lo nutri a mano, coi nastri, coi bracci o con la carrucola. Il granulato si vende a peso.'); CT.inject(S.contracts, 'granulato'); }
   else if (id === 'vehicle') { banner(`${C.VEHICLES[S.lv.vehicle].name}!`, `${C.VEHICLES[S.lv.vehicle].cap} gomme a viaggio. ${V.state === 'loading' && !S.van.fill.length && !V.pend.length ? 'Sta arrivando adesso.' : 'Arriva al prossimo giro.'}`);
     if (V.state === 'loading' && !S.van.fill.length && !V.pend.length) { V.state = 'closing'; V.t = 0; } }
   if (id === 'belt' && S.lv.belt === 1) { banner('Nuovo: bacheca contratti', isTouch ? 'Lavori facoltativi senza scadenza: tocca 📋 Contratti.' : 'Lavori facoltativi senza scadenza: premi K o vai alla bacheca sul muro dell\'officina.'); board.draw(S.contracts.list, S.contracts.active, false); }
-  else banner(u.name, `${fmtVal(u, u.lv[S.lv[id]])}`);
+  else if (bannerQ.length === nb0) banner(u.name, `${fmtVal(u, u.lv[S.lv[id]])}`);
+  if (id === 'fascioni' || id === 'shredder') { board.draw(S.contracts.list, S.contracts.active, !contractsUnlocked()); if (ctOpen) renderContracts(); }
   if (S.tut === 2) S.tut = 3;
-  syncCrew(); syncArms(); refreshCart(); refreshHands(); renderShop(); renderBuildBar(); updateHUD(); saveNow();
+  syncCrew(); syncArms(); syncPulleys(); refreshCart(); refreshHands(); renderShop(); renderBuildBar(); updateHUD(); saveNow();
   return true;
 }
 function renderShop() {
@@ -829,8 +1025,8 @@ function renderShop() {
       el.appendChild(btn); list.appendChild(el);
     }
   }
-  const nx = document.createElement('div'); nx.className = 'phase soon'; nx.innerHTML = `Fase 5: ${C.PHASES[6].name} <small>arriva nella prossima versione</small>`; list.appendChild(nx);
-  const tease = document.createElement('div'); tease.className = 'card locked'; tease.innerHTML = `<div class="ic">🧲</div><div class="tx"><b>Carrucola, fascioni e trituratore</b><span>Poi i droni, il braccio ragno e il finale.</span></div>`; list.appendChild(tease);
+  const nx = document.createElement('div'); nx.className = 'phase soon'; nx.innerHTML = `Fase 6: ${C.PHASES[7].name} <small>arriva nella prossima versione</small>`; list.appendChild(nx);
+  const tease = document.createElement('div'); tease.className = 'card locked'; tease.innerHTML = `<div class="ic">🚁</div><div class="tx"><b>Squadriglie di droni e braccio ragno</b><span>Poi il finale: l'ultima gomma la lanci tu.</span></div>`; list.appendChild(tease);
 }
 let shopOpen = false;
 function openShop() { if (!playing) return; if (build.on) exitBuild(); if (ctOpen) closeContracts(); shopOpen = true; renderShop(); $('shop').classList.remove('hidden'); if (document.pointerLockElement) document.exitPointerLock(); }
@@ -944,6 +1140,9 @@ function doAction(ndc) {
   if (aimingAtCart()) { pickCart(); return; }
   if (contractsUnlocked() && nearBoard()) { openContracts(); return; }
   if (inRackZone() && carriedNow()) { tryStore(); return; }
+  if (inCutZone() && carriedNow()) { tryFeedCutter(); return; }
+  if (inTableZone()) { tryNest(); return; }
+  { const sh = nearShredder(); if (sh && carriedNow()) { tryShred(sh); return; } }
   const rec = pickAt(ndc || lastAimNDC);
   if (rec && rec._t <= C.PLAYER.reach + 1.5) { if (tryGrab(rec)) return; }
   if (inThrowZone()) { if (!tryThrow() && !carried()) toast('Non hai gomme: vai a prenderle alla montagna'); return; }
@@ -986,6 +1185,7 @@ function blocked(x, z, solidOnly = false) {
   if (st.cart > 0 && !S.cartHeld && S.cartPos && Math.hypot(x - S.cartPos.x, z - S.cartPos.z) < 0.6) return true;
   if (belts.hit(x, z, 0.28)) return true;
   if (arms.hit(x, z, 0.3)) return true;
+  if (pulleys.hit(x, z, 0.25) || shredders.hit(x, z, 0.3)) return true;
   if (!solidOnly && holding() && cartPose.side < 0.5) { const D = (cartPose.D || 1.4) + 0.3, fx = x - Math.sin(P.yaw) * D, fz = z - Math.cos(P.yaw) * D; if (meshH(fx, fz) > 1.0) return true; }
   return false;
 }
@@ -1070,7 +1270,7 @@ function parkSpot(force = false) {
 function blockedStatic(x, z, pad) {
   for (const b of colliders) if (x > b.x0 - pad && x < b.x1 + pad && z > b.z0 - pad && z < b.z1 + pad) return true;
   if (van.visible) { const vx = van.position.x, U = van.userData; if (x > vx - 0.9 && x < vx + U.len + 0.4 && Math.abs(z - VAN_Z) < U.halfW + 0.6) return true; }
-  if (arms.hit(x, z, pad)) return true;
+  if (arms.hit(x, z, pad) || pulleys.hit(x, z, pad) || shredders.hit(x, z, pad)) return true;
   if (Math.hypot(x - P.x, z - P.z) < 0.55) return true;
   if (belts.hit(x, z, pad)) return true;
   return false;
@@ -1106,8 +1306,9 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (!playing) return;
   if (build.on) {
+    if (e.code === 'Escape' && build.pylonA) { e.preventDefault(); build.pylonA = null; build.pick = null; toast('Pilone A annullato'); sfx.click(); return; }
     if (e.code === 'KeyC' || e.code === 'Escape') { e.preventDefault(); exitBuild(); return; }
-    const i = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].indexOf(e.code); if (i >= 0 && buildOrder()[i]) { setPiece(buildOrder()[i]); return; }
+    const dg = /^Digit([1-7])$/.exec(e.code); if (dg) { const k = buildOrder().find(q => PINFO[q].key === dg[1]); if (k) setPiece(k); return; }
     if (e.code === 'KeyR') { rotatePiece(); return; }
     if (e.code === 'KeyX' || e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); dismantle(); return; }
     if (e.code === 'KeyB' || e.code === 'Tab') { e.preventDefault(); exitBuild(); openShop(); }
@@ -1172,7 +1373,10 @@ const endTouch = e => {
 };
 canvas.addEventListener('touchend', endTouch); canvas.addEventListener('touchcancel', endTouch);
 const throwBtn = $('throwbtn');
-throwBtn.addEventListener('touchstart', e => { e.preventDefault(); actionHeld = true; if (!tryThrow()) tryStore(); });
+throwBtn.addEventListener('touchstart', e => { e.preventDefault(); actionHeld = true; if (!tryThrow() && !tryStore() && !tryFeedCutter()) tryShred(); });
+const fascBtn = $('fascbtn');
+fascBtn.addEventListener('touchstart', e => { e.preventDefault(); tryNest(); });
+fascBtn.addEventListener('mousedown', e => { e.preventDefault(); tryNest(); });
 throwBtn.addEventListener('touchend', e => { e.preventDefault(); actionHeld = false; });
 throwBtn.addEventListener('mousedown', () => { actionHeld = true; tryThrow(); });
 
@@ -1223,14 +1427,17 @@ function saveNow() {
   for (const f of flights) {
     if (f.kind === 'grab') (f.toCart ? s.cart : s.hands).push(f.type);
     else if (f.kind === 'throw') { if (f.p.sub && s.van.fill[f.p.slot]) s.van.fill[f.p.slot].push(f.type); else s.van.fill[f.p.slot] = [f.type]; s.money += C.TIRES[f.type].value; s.stats.cleared++; }
+    else if (f.kind === 'cut') { s.fascioni.ready++; if (!f.counted) s.stats.cleared++; }
     else if (f.kind === 'store') { s.storage[f.bay] = Math.min(RACK.cap, s.storage[f.bay] + 1); s.money += C.TIRES[f.type].value; s.stats.cleared++; s.stats.earned += C.TIRES[f.type].value; }
   }
   // automation in transit (belts, hoppers, intake flights, the helpers' hands, rolling tires): seconds from the van, saved as delivered
-  const transit = crew.transit().concat(arms.transit()); for (const p of belts.pieces) { for (const t of p.tires) transit.push(t.type); for (const t of p.hopper) transit.push(t); }
-  for (const f of flights) if (f.kind === 'intake') transit.push(f.type);
+  // the fascioni cutter: tires waiting / being cut are saved as cut fascioni
+  s.fascioni.ready = Math.min(F5.FASC.READY_MAX + 4, s.fascioni.ready + fq.queue.length + fasc.transit().length);
+  const transit = crew.transit().concat(arms.transit(), pulleys.transit(), shredders.transit()); for (const p of belts.pieces) { for (const t of p.tires) transit.push(t.type); for (const t of p.hopper) transit.push(t); }
+  for (const f of flights) if (f.kind === 'intake' || f.kind === 'shred') transit.push(f.type);
   for (const t of transit) { s.money += C.TIRES[t].value; s.stats.cleared++; s.stats.earned += C.TIRES[t].value; }
   s.van.fill = s.van.fill.filter(Boolean);
-  s.belts = belts.logic.serialize(); s.arms = arms.serialize();
+  s.belts = belts.logic.serialize(); s.arms = arms.serialize(); s.pulleys = pulleys.serialize(); s.shredders = shredders.serialize();
   return SV.save(localStorage, s);
 }
 addEventListener('pagehide', saveNow);
@@ -1262,7 +1469,7 @@ function step(dt) {
   if (nearDirty || Math.hypot(P.x - nearCenter.x, P.z - nearCenter.y) > 0.8) rebuildNear();
   if (farDirty && Math.hypot(P.x - farCenter.x, P.z - farCenter.y) > 0.01 || Math.hypot(P.x - farCenter.x, P.z - farCenter.y) > 3) rebuildFar();
   updateVan(dt); updateFlights(dt); updateDust(dt);
-  crew.update(dt); updateBelts(dt); arms.update(dt); flushMountain(dt); popT -= dt;
+  crew.update(dt); updateBelts(dt); arms.update(dt); pulleys.update(dt); shredders.update(dt); updateFascioni(dt); flushMountain(dt); popT -= dt;
   if (pinnedDone > 0) { pinnedDone -= dt; if (pinnedDone <= 0) updatePinned(); }
   grabBusy = Math.max(0, grabBusy - dt); throwCD = Math.max(0, throwCD - dt);
   // hover highlight + crosshair label (desktop aims at the centre)
@@ -1272,6 +1479,7 @@ function step(dt) {
     let text = '', cls = '';
     if (!build.aim) text = 'Guarda il piazzale per piazzare';
     else if (build.del) { text = `${isTouch ? '' : '[X] / Tasto destro · '}Smonta ${PINFO[build.del.type].name} (+${money(PINFO[build.del.type].cost)})`; cls = 'far'; }
+    else if (build.valid && build.piece === 'pulley') { text = build.pylonA ? `${isTouch ? '' : 'Clic · '}Pilone B · cavo ${F5.lineLen(build.pylonA, build).toFixed(0)} m · ${money(PINFO.pulley.cost)}` : `${isTouch ? '' : 'Clic · '}Pilone A della carrucola (ai piedi della montagna)`; cls = 'ok'; }
     else if (build.valid) { text = `${isTouch ? '' : 'Clic · '}Piazza ${PINFO[build.piece].name} · ${money(PINFO[build.piece].cost)}`; cls = 'ok'; }
     else { text = build.reason; cls = 'bad'; }
     $('aimlabel').textContent = text; $('aimlabel').className = cls; $('cross').className = cls; $('binfo').textContent = text; $('binfo').className = cls;
@@ -1286,6 +1494,9 @@ function step(dt) {
     let text = '', cls = '';
     if (aimingAtCart()) { text = isTouch ? 'Prendi carrello' : '[E] / Clic · Prendi carrello'; cls = 'ok'; }
     else if (contractsUnlocked() && nearBoard()) { text = '[E] / Clic · Bacheca contratti'; cls = 'ok'; }
+    else if (inCutZone() && carriedNow()) { text = cutterRoom() ? 'Metti nella macchina dei fascioni' : 'La macchina è piena: infila i fascioni'; cls = cutterRoom() ? 'throw' : 'bad'; }
+    else if (inTableZone()) { const f = S.fascioni; text = f.ready > 0 ? `${isTouch ? '' : '[E] / Clic · '}Infila fascione · ${f.stack}/${F5.FASC.STACK} (pronti ${f.ready})` : 'Nessun fascione pronto: porta gomme alla macchina'; cls = f.ready > 0 ? 'ok' : 'far'; }
+    else if (shredders.list.length && nearShredder()) { const q = nearShredder(); text = carriedNow() ? (shredders.accepts(q) ? 'Butta nel trituratore' : 'Il trituratore sta macinando…') : `Trituratore · ${fmt.format(Math.round(S.granulate.kg))} kg di granulato`; cls = carriedNow() ? (shredders.accepts(q) ? 'throw' : 'far') : 'far'; }
     else if (inRackZone() && carriedNow()) { const t = holding() ? S.cart[S.cart.length - 1] : S.hands[S.hands.length - 1]; text = rackRoom(t) > 0 ? `Metti nello scaffale ${['14"', '16"', '18"', 'Scooter'][bayOf(t)]}` : 'Scaffale pieno'; cls = rackRoom(t) > 0 ? 'throw' : 'bad'; }
     else if (rec && rec._t <= C.PLAYER.reach + 1.5) {
       const t = C.TIRES[rec.type];
@@ -1298,7 +1509,8 @@ function step(dt) {
     lab.textContent = text; lab.className = cls; ch.className = cls;
   }
   $('pickbtn').classList.toggle('hidden', !(playing && cartDist() < 3.1));
-  if (isTouch) throwBtn.classList.toggle('hidden', !(playing && (inThrowZone() || inRackZone()) && carriedNow()));
+  if (isTouch) throwBtn.classList.toggle('hidden', !(playing && (inThrowZone() || inRackZone() || inCutZone() || (shredders.list.length && nearShredder())) && carriedNow()));
+  $('fascbtn').classList.toggle('hidden', !(playing && isTouch && !build.on && inTableZone()));
   zoneMesh.visible = vanReady();
   zoneMat.opacity = carriedNow() ? (inThrowZone() ? 1 : 0.75 + Math.sin(performance.now() / 260) * 0.25) : 0.45;
   $('zonehint').classList.toggle('hidden', !(playing && carriedNow() && nearVanButOut()));
@@ -1306,6 +1518,8 @@ function step(dt) {
   if (actionHeld && playing && !shopOpen && !build.on && !ctOpen) {
     if (inThrowZone() && carriedNow() && throwCD <= 0) tryThrow();
     else if (inRackZone() && carriedNow() && throwCD <= 0) tryStore();
+    else if (inCutZone() && carriedNow() && throwCD <= 0) tryFeedCutter();
+    else if (carriedNow() && throwCD <= 0 && shredders.list.length && nearShredder()) tryShred();
     else if (!isTouch && grabBusy <= 0) { const r = pickAt(lastAimNDC); if (r && r.free && r._t <= C.PLAYER.reach && carried() < capacity()) tryGrab(r); }
   }
   // workers watch you
@@ -1336,6 +1550,7 @@ st = C.stats(S.lv);
 if (st.cart > 0 && S.cartHeld && S.hands.length) { S.cartHeld = false; parkSpot(true); } // old save with tires in both
 refreshCart(); refreshHands(); rebuildCargo();
 if (S.van.fill.length >= LAYOUT.cap) { V.state = 'closing'; V.t = 0; }
+fasc.setUnlocked(fascUnlocked()); fasc.setState(S.fascioni, []);
 syncCrew(); evictPieces(); renderBuildBar(); rack.setCounts(S.storage); board.draw(S.contracts.list, S.contracts.active, !contractsUnlocked());
 updatePlayer(0); rebuildNear(); rebuildFar(); updateHUD();
 if (loadedFrom !== 'new') $('play').textContent = 'CONTINUA';
@@ -1368,8 +1583,10 @@ if (TEST) {
     beltTires: () => belts.logic.tireCount(),
     get unstuck() { return unstuck; }, unstick,
     // v7
-    arms, armDest, CT, rack, board, RACK, BOARD, storeTire, tryStore, inRackZone, nearBoard, openContracts, closeContracts, acceptContract, contractsUnlocked, updatePinned, evictPieces, vehicleBay,
+    colliders, arms, armDest, CT, rack, board, RACK, BOARD, storeTire, tryStore, inRackZone, nearBoard, openContracts, closeContracts, acceptContract, contractsUnlocked, updatePinned, evictPieces, vehicleBay,
     fillVan(n) { S.van.fill = Array.from({ length: Math.min(n, LAYOUT.cap) }, (_, i) => [hash2(i, 3) < 0.03 ? 3 : Math.floor(hash2(i, 9) * 3)]); rebuildCargo(); },
+    // v8
+    pulleys, shredders, fasc, fq, F5, FBAY, CUT_ZONE, TABLE_ZONE, dropDest, shredFeed, cutterFeed, cutterRoom, tryNest, tryFeedCutter, tryShred, nearShredder, inCutZone, inTableZone, syncPulleys, footprintOf,
     get ctOpen() { return ctOpen; }, get FL() { return FL; }, setVehicleNow(t) { setVehicle(t); evictPieces(); updateHUD(); },
     clearBanners() { bannerQ.length = 0; bannerT = 0; $('banner').classList.remove('show'); toastT = 0; $('toast').classList.remove('show'); },
   };

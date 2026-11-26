@@ -79,8 +79,11 @@ export const UPGRADES = [
   { id: 'armSpeed', phase: 5, icon: '⚙️', name: 'Servomotori', desc: 'Pompe e servomotori nuovi: i bracci girano e afferrano più svelti.', unit: 'x velocità', lv: [1, 1.5] },
   { id: 'armGrab', phase: 5, icon: '🗜️', name: 'Pinza multipla', desc: 'Una pinza più lunga: ogni braccio infila più gomme a ogni presa.', unit: 'gomme a presa', lv: [1, 2, 3] },
   // phase 6
-  { id: 'pulley', phase: 6, icon: '🧲', machine: true, name: 'Carrucola col magnete', desc: 'Una gru a carrucola che solleva grappoli di gomme col magnete.', unit: 'carrucole', lv: [0, 1, 2, 3], rate: 10 },
-  { id: 'magnet', phase: 6, icon: '🔋', name: 'Magnete potenziato', desc: 'Più gomme a ogni presa.', unit: 'x presa', lv: [1, 1.4, 1.8] },
+  { id: 'pulley', phase: 6, icon: '🧲', machine: true, name: 'Carrucola magnetica', desc: 'Due piloni d\'acciaio e un cavo teso sopra il piazzale: il carrello corre sul cavo e l\'elettromagnete solleva un grappolo di gomme grazie all\'acciaio che hanno dentro. Ogni livello = una linea in più.', unit: 'linee', lv: [0, 1, 2, 3], rate: 10 },
+  { id: 'magnet', phase: 6, icon: '🧲', name: 'Elettromagnete potenziato', desc: 'Bobina di rame più grossa: il magnete tira su più gomme a ogni presa.', unit: 'gomme a presa', lv: [4, 6, 10], mult: [1, 1.4, 1.8] },
+  { id: 'cableSpeed', phase: 6, icon: '⏩', name: 'Motore del carrello', desc: 'Un motore più spinto: il carrello corre sul cavo e il paranco cala più svelto.', unit: 'x velocità', lv: [1, 1.6] },
+  { id: 'fascioni', phase: 6, icon: '⭕', machine: true, name: 'Macchina dei fascioni', desc: 'Due dischi d\'acciaio tagliano i fianchi delle gomme: restano i fascioni, che infili a mano uno dentro l\'altro (tutun tutun) in pile da 10 per il fornitore.', unit: '', lv: [0, 1] },
+  { id: 'shredder', phase: 6, icon: '⚙️', machine: true, name: 'Trituratore', desc: 'Bialbero da piazzare col blueprint: macina le gomme in granulato di gomma, venduto a peso (più di quanto vale la gomma intera). Ogni livello = un trituratore in più.', unit: 'trituratori', lv: [0, 1, 2] },
   // phase 7
   { id: 'drones', phase: 7, icon: '🚁', machine: true, name: 'Squadriglie di droni', desc: 'Quattro droni per squadriglia, ognuno porta una gomma.', unit: 'squadriglie', lv: [0, 1, 2, 3, 4], rate: 6 },
   { id: 'droneSpeed', phase: 7, icon: '🔋', name: 'Batterie dei droni', desc: 'Droni più veloci.', unit: 'x velocità', lv: [1, 1.5] },
@@ -110,6 +113,9 @@ export const COSTS = {"shoes":[15,60,120],"gloves":[20],"grip":[40,55,200],"cart
 
 // extras outside the simulated plan (bonus upgrades, not needed to finish in 5-6 h)
 COSTS.armGrab = [12000, 26000];
+COSTS.cableSpeed = [24000];
+COSTS.fascioni = [15000];
+COSTS.shredder = [20000, 45000];
 
 export function costOf(id, level) { const c = COSTS[id]; return c && level < c.length ? c[level] : null; }
 export function maxLevel(id) { return UPG[id].lv.length - 1; }
@@ -135,7 +141,7 @@ export function stats(lvIn) {
     L('helper') * UPG.helper.rate * L('helperCart') +
     L('belt') * UPG.belt.rate * L('beltSpeed') +
     L('arm') * UPG.arm.rate * L('armSpeed') +
-    L('pulley') * UPG.pulley.rate * L('magnet') +
+    L('pulley') * UPG.pulley.rate * UPG.magnet.mult[Math.min(lv.magnet, 2)] +
     L('drones') * UPG.drones.rate * L('droneSpeed') +
     L('spider') * UPG.spider.rate * L('spiderBoost');
   const veh = VEHICLES[L('vehicle')], bays = L('bays');

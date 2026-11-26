@@ -169,6 +169,38 @@ export class Sfx {
   // contract completed: bright chime + little fanfare
   chime() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.5); [784, 988, 1175, 1568].forEach((f, i) => { this.tone(o, t + i * 0.08, f, f, 0.5, 'triangle', 0.22); this.tone(o, t + i * 0.08, f * 2, f * 2, 0.3, 'sine', 0.05); }); this.tone(o, t + 0.36, 2093, 2093, 0.9, 'sine', 0.12); }
   paper() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.4); this.noise(o, t, 0.12, 'bandpass', 2600, 4200, 0.8, 0.18, 0.01); this.noise(o, t + 0.1, 0.08, 'bandpass', 3600, 2200, 0.8, 0.12, 0.01); }
+  // ---- v8 Fase 5 ----
+  // electromagnet ON: low THWUMP + metal CLACK + a short mains hum (50 Hz family) that fades
+  magnetOn(gain = 1) { if (!this.ok() || gain < 0.04) return; const t = this.t, o = this.out(0, 0.8 * gain);
+    this.tone(o, t, 95, 42, 0.32, 'sine', 0.7, 0.004); this.noise(o, t, 0.12, 'lowpass', 600, 120, 1, 0.5);
+    this.noise(o, t + 0.05, 0.05, 'bandpass', 2600, 1700, 3, 0.45); this.tone(o, t + 0.05, 260, 120, 0.09, 'square', 0.12);
+    for (const f of [100, 150, 200]) this.tone(o, t + 0.06, f, f, 0.9, 'sawtooth', 0.03 * (f === 100 ? 1.6 : 1), 0.05); }
+  // electromagnet OFF: crisp release CLACK + a whoosh of air as the cluster drops
+  magnetOff(gain = 1) { if (!this.ok() || gain < 0.04) return; const t = this.t, o = this.out(0, 0.7 * gain);
+    this.noise(o, t, 0.04, 'bandpass', 3400, 2000, 2.5, 0.45); this.tone(o, t, 300, 140, 0.07, 'sine', 0.3);
+    this.noise(o, t + 0.03, 0.4, 'bandpass', 500, 1600, 1.2, 0.22, 0.06); this.tone(o, t, 100, 60, 0.18, 'sawtooth', 0.04); }
+  // the trolley motor on the cable: rising / falling electric whir + wheel rumble
+  trolley(gain = 1, dur = 2) { if (!this.ok() || gain < 0.04) return; const t = this.t, o = this.out(0, 0.25 * gain), d = Math.max(0.4, dur);
+    this.tone(o, t, 140, 420, d * 0.3, 'sawtooth', 0.05, 0.1); this.tone(o, t + d * 0.3, 420, 420, d * 0.4, 'sawtooth', 0.04, 0.02); this.tone(o, t + d * 0.7, 420, 160, d * 0.3, 'sawtooth', 0.04, 0.02);
+    this.noise(o, t, d, 'bandpass', 260, 320, 2, 0.08, 0.15); }
+  // the hoist winch (magnet going up / down)
+  winch(gain = 1, dur = 0.8, up = true) { if (!this.ok() || gain < 0.04) return; const t = this.t, o = this.out(0, 0.2 * gain);
+    this.tone(o, t, up ? 180 : 320, up ? 320 : 180, dur, 'square', 0.035, 0.05); this.noise(o, t, dur, 'bandpass', 1400, 1100, 4, 0.05, 0.05); }
+  // fascioni: the signature "tutun! tutun!" double thump; pitch climbs with the stack (1..10)
+  tutun(n = 1) { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.75), k = Math.pow(1.06, Math.max(0, n - 1));
+    for (const [d, f, g] of [[0, 150, 0.8], [0.13, 190, 0.65]]) { this.tone(o, t + d, f * k, f * k * 0.5, 0.13, 'sine', g, 0.003); this.noise(o, t + d, 0.05, 'lowpass', 900 * k, 300, 1, 0.35); this.noise(o, t + d, 0.025, 'bandpass', 2200 * k, 1600, 2, 0.12); } }
+  // bundle of 10 done: rubbery crunch of the strap + a bright little chime
+  bundle() { if (!this.ok()) return; const t = this.t, o = this.out(0, 0.6);
+    for (let i = 0; i < 6; i++) this.noise(o, t + i * 0.025, 0.04, 'bandpass', 1200 + i * 200, 700, 2, 0.3);
+    this.tone(o, t, 120, 60, 0.25, 'sine', 0.5); [659, 880, 1319].forEach((f, i) => this.tone(o, t + 0.16 + i * 0.07, f, f, 0.4, 'triangle', 0.18)); }
+  // the sidewall cutter: twin discs whine up, slice through the rubber
+  cutter(gain = 1) { if (!this.ok() || gain < 0.04) return; const t = this.t, o = this.out(0, 0.35 * gain);
+    this.tone(o, t, 600, 1900, 0.35, 'sawtooth', 0.05, 0.05); this.tone(o, t + 0.35, 1900, 1700, 0.5, 'sawtooth', 0.045, 0.01);
+    this.noise(o, t + 0.25, 0.6, 'bandpass', 3000, 2400, 3, 0.14, 0.05); this.noise(o, t + 0.3, 0.5, 'lowpass', 500, 300, 1, 0.12, 0.05); }
+  // the shredder chewing a tire: deep grinding rumble + rubber crunches
+  shred(gain = 1) { if (!this.ok() || gain < 0.04) return; const t = this.t, o = this.out(0, 0.75 * gain);
+    this.tone(o, t, 55, 48, 0.8, 'sawtooth', 0.12, 0.05); this.tone(o, t, 82, 70, 0.8, 'square', 0.05, 0.05); this.noise(o, t, 0.85, 'lowpass', 420, 240, 1.2, 0.35, 0.04);
+    for (let i = 0; i < 7; i++) this.noise(o, t + 0.05 + i * 0.1 + Math.random() * 0.04, 0.05, 'bandpass', this.rnd(700, 1600), 500, 2, 0.28); }
   startWind() {
     const c = this.ctx, s = c.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;
     const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420;

@@ -173,3 +173,7 @@ body.touch .pinned{top:150px;width:200px;padding:13px 12px 10px}
 @media (max-width:640px){.ctlist{grid-template-columns:1fr}}
 .piece.armp .pi svg{filter:drop-shadow(0 0 2px rgba(232,106,18,.5))}
 .pop.gold.big{font-size:30px}
+
+/* v8 */
+.fascbtn{background:radial-gradient(#ffcf3a,#e29a12);color:#1a1a1a;font-size:17px;line-height:1.1}
+.fascbtn:active{transform:scale(0.94)}

@@ -2,6 +2,7 @@
 // No offline progress: nothing is ever computed from the time spent away.
 import { defaultLevels, UPGRADES, maxLevel, stats } from './config.js';
 import { defaultContracts, normalizeContracts } from './contracts.js';
+import { defaultFascioni, normalizeFascioni, defaultGranulate, normalizeGranulate, normalizePulleys, normalizeShredders } from './fase5.js';
 
 export const SAVE_KEY = 'umdg-save';
 export const BACKUP_KEY = 'umdg-save-bak';
@@ -25,9 +26,13 @@ export function defaultState() {
     belts: [],                // placed conveyor pieces [{type, gx, gz, rot}] (helpers = lv.helper / lv.helperCart)
     arms: [],                 // v7: placed robotic arms [{gx, gz, rot}] (how many = lv.arm; speed / grab = lv.armSpeed / lv.armGrab)
     storage: [0, 0, 0, 0],    // v7: tires in the rack bays 14" / 16" / 18" / Scooter
-    contracts: defaultContracts(), // v7: {list, active, done, seq, earned}
+    contracts: defaultContracts(), // v7: {list, active, done, seq, earned} (+ v8 unlock {fascioni, granulato})
+    pulleys: [],              // v8: carrucole magnetiche [{a:{gx,gz}, b:{gx,gz}, pick}] (how many = lv.pulley)
+    shredders: [],            // v8: trituratori [{gx, gz, rot, kg}] (how many = lv.shredder)
+    fascioni: defaultFascioni(), // v8: {ready, stack, bundles, pallet, cut}
+    granulate: defaultGranulate(), // v8: {kg, sacks} granulate produced
     player: { x: 3, z: 0.5, yaw: Math.PI / 2, pitch: -0.12 },
-    stats: { cleared: 0, earned: 0, thrown: 0, auto: 0, vans: 0, gold: 0, playTime: 0, bySize: [0, 0, 0, 0, 0] },
+    stats: { cleared: 0, earned: 0, thrown: 0, auto: 0, vans: 0, gold: 0, playTime: 0, stored: 0, shredded: 0, bundles: 0, bySize: [0, 0, 0, 0, 0] },
     milestones: 0,            // how many MILESTONES already celebrated
     tut: 0,                   // tutorial step
     settings: { volume: 0.8, quality: 'auto', sens: 1, invertY: false },
@@ -85,6 +90,14 @@ export function normalize(raw) {
   }
   if (Array.isArray(raw.storage)) s.storage = [0, 1, 2, 3].map(i => Math.max(0, Math.min(STORAGE_CAP, num(raw.storage[i], 0) | 0)));
   s.contracts = normalizeContracts(raw.contracts);
+  // v8: Fase 5 (v7 saves have none of these: defaults)
+  { const taken = new Set(s.belts.map(b => b.gx + ',' + b.gz).concat(s.arms.map(a => a.gx + ',' + a.gz)));
+    s.pulleys = normalizePulleys(raw.pulleys, [0, 1, 2, 3][s.lv.pulley] || 0, taken);
+    s.shredders = normalizeShredders(raw.shredders, [0, 1, 2][s.lv.shredder] || 0, taken); }
+  s.fascioni = normalizeFascioni(raw.fascioni);
+  s.granulate = normalizeGranulate(raw.granulate);
+  if (s.lv.fascioni >= 1) s.contracts.unlock.fascioni = true;
+  if (s.lv.shredder >= 1) s.contracts.unlock.granulato = true;
   if (isObj(raw.player)) for (const k of ['x', 'z', 'yaw', 'pitch']) s.player[k] = num(raw.player[k], d.player[k]);
   if (isObj(raw.stats)) {
     for (const k of Object.keys(d.stats)) if (k !== 'bySize') s.stats[k] = Math.max(0, num(raw.stats[k], 0));

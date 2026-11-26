@@ -1,6 +1,7 @@
 // Zona di stoccaggio (tire rack with 4 labelled bays) + Bacheca contratti (cork board on the office wall).
 import * as THREE from 'three';
 import { merge, M, box, cyl, cvs } from './gfx.js';
+import { what } from './contracts.js';
 
 export const RACK = { x0: 4.0, x1: 12.0, zBack: -13.95, zFront: -12.55, bays: 4, cap: 40 }; // front on a 2 m grid border: a belt can end right at it
 export const RACK_LABELS = ['14"', '16"', '18"', 'SCOOTER'];
@@ -82,7 +83,7 @@ export function buildBoard(scene, { mats, colliders }) {
       x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(-205, -125, 420, 270);
       x.fillStyle = ct.id === activeId ? '#fff6c8' : '#f6efdf'; x.fillRect(-215, -135, 420, 270);
       x.fillStyle = '#2a2420'; x.textAlign = 'left'; x.font = '900 34px Arial'; x.fillText(ct.client.slice(0, 22), -195, -80);
-      x.font = '700 30px Arial'; x.fillText(`${ct.need} gomme ${ct.size < 0 ? 'miste' : ['14"', '16"', '18"', 'Scooter'][ct.size]}`, -195, -30);
+      x.font = '700 30px Arial'; x.fillText(what(ct), -195, -30);
       x.fillStyle = '#1f7a3a'; x.font = '900 40px Arial'; x.fillText(`+ € ${Math.round(ct.reward)}`, -195, 30);
       x.fillStyle = '#6a5d50'; x.font = '600 24px Arial'; x.fillText('Nessuna scadenza', -195, 80);
       if (ct.got) { x.fillStyle = '#ddd2bd'; x.fillRect(-195, 98, 380, 16); x.fillStyle = '#d0402b'; x.fillRect(-195, 98, 380 * ct.got / ct.need, 16); }
