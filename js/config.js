@@ -3,7 +3,7 @@
 // Costs in COSTS were calibrated with `node sim/economy.js --tune` and then frozen here.
 import { braidLayout } from './braid.js';
 
-export const VERSION = '1.0.2';
+export const VERSION = '1.0.3';
 export const TOTAL_TIRES = 1000000;
 
 /* ---------- tires ---------- */
@@ -65,7 +65,8 @@ export const UPGRADES = [
   // phase 1
   { id: 'shoes', phase: 1, icon: '👟', name: 'Scarpe antinfortunistiche', desc: 'Cammini più svelto tra la montagna e il furgone.', unit: 'm/s', lv: [3.2, 3.8, 4.4, 5.0] },
   { id: 'gloves', phase: 1, icon: '🧤', name: 'Guanti da gommista', desc: 'Con i guanti tieni due gomme alla volta, una per mano.', unit: 'gomme in mano', lv: [1, 2] },
-  { id: 'grip', phase: 1, icon: '💪', name: 'Presa veloce', desc: 'Strappi le gomme dalla montagna più in fretta.', unit: 's per gomma', lv: [0.9, 0.65, 0.48, 0.36] },
+  // v1.0.3 "Mani rapide" (save key stays 'grip'): lv = pause between two grabs, throw = pause between two throws; at the top level both are 0 = one tire per click, as fast as you click
+  { id: 'grip', phase: 1, icon: '💪', name: 'Mani rapide', desc: 'Prendi le gomme dalla montagna e le lanci nel mezzo più in fretta. Al massimo livello è immediato: una gomma a ogni clic, alla velocità che vuoi.', unit: 's tra due prese', lv: [0.9, 0.55, 0.25, 0], throw: [0.4, 0.25, 0.12, 0] },
   // phase 2
   { id: 'cart', phase: 2, icon: 'cart', machine: true, name: 'Carrello portagomme', desc: 'Il carrello portagomme in tubolare d\'acciaio: le gomme impilate una sull\'altra. Parte da 4 gomme e arriva a 10.', unit: 'gomme', lv: [0, 4, 6, 8, 10] },
   // phase 3 (not in the first playable slice)
@@ -118,6 +119,8 @@ export const PLAN = [
 // COSTS: frozen output of `node sim/economy.js --tune` (v1.0.2 rebalance: every upgrade is in the plan, ~5 h to the millionth tire).
 export const COSTS = {"shoes":[10,25,70],"gloves":[15],"grip":[28,30,95],"cart":[55,85,90,95],"helper":[120,220,300,550,85000],"trust":[180,4000,18000,180000,280000,380000],"vehicle":[280,6000,30000],"helperCart":[350],"belt":[600,1500,4500,4500],"bays":[2000,15000,70000],"beltSpeed":[3000,5500],"arm":[6000,12000,14000,15000],"armSpeed":[12000],"armGrab":[12000,14000],"pulley":[16000,16000,22000,30000],"magnet":[16000,22000,80000],"fascioni":[16000],"shredder":[22000,35000],"cableSpeed":[22000],"drones":[55000,55000,60000,70000,75000,250000,280000,350000],"droneLift":[60000],"spider":[60000,75000,250000,300000],"droneSpeed":[70000],"spiderBoost":[70000,250000]};
 
+// pause between two throws for a Mani rapide level (0 at the top level: throw at click speed)
+export function throwGap(level = 0) { const t = UPG.grip.throw; return t[Math.max(0, Math.min(t.length - 1, level | 0))]; }
 export function costOf(id, level) { const c = COSTS[id]; return c && level < c.length ? c[level] : null; }
 export function maxLevel(id) { return UPG[id].lv.length - 1; }
 export function defaultLevels() { const o = {}; for (const u of UPGRADES) o[u.id] = 0; return o; }
@@ -136,7 +139,7 @@ export function stats(lvIn) {
   const walk = L('shoes') * (cart > 0 ? PLAYER.cartSpeedMul : 1);
   const grab = L('grip');
   const carry = hands + cart;
-  const trip = 2 * PLAYER.walkDist / walk + carry * (grab + PLAYER.aimOverhead + PLAYER.throwInterval);
+  const trip = 2 * PLAYER.walkDist / walk + carry * (grab + PLAYER.aimOverhead + throwGap(lv.grip));
   const manual = PLAYER.efficiency * carry / trip;
   // v1.0.2: machine rates measured in the real game (test calibration, 60 s runs with the machine well placed), tires/s
   const RATE = {

@@ -47,30 +47,24 @@ export class Sfx {
     this.tone(o, t + 0.02, 520 * k * this.rnd(0.9, 1.1), 780 * k, 0.09, 'sine', 0.12);
     this.tone(o, t, 95 * k, 70 * k, 0.16, 'sine', 0.35);
   }
-  // tire lands in the van: a bright two-tone "bling!" (C6 -> G6 with bell partials) over a soft rubber settle.
-  // combo (tires landing in quick succession) and gold nudge the pitch up.
-  // soft = an automatic delivery (helpers, belts): quieter, no combo climb, so the yard doesn't turn into a slot machine
+  // v1.0.3: tire lands in the van: one dry, crisp "din" (no second note, no long ring): a short metallic strike
+  // at ~E6 with a couple of inharmonic partials, all gone in ~0.1 s. Combos nudge the pitch up a step;
+  // gold gets a brighter, double-overtone "din" so it still pops.
+  // soft = an automatic delivery (helpers, belts): quieter, no combo climb
   clink(size = 1, height = 0, pan = 0, gold = false, soft = 0) {
     if (!this.ok()) return; const t = this.t, o = this.out(pan, soft ? 0.85 * soft : 0.85);
     const now = t; let combo = 0;
     if (!soft) { this._combo = (now - (this._lastBling || -9) < 1.2) ? Math.min(6, (this._combo || 0) + 1) : 0; this._lastBling = now; combo = this._combo; }
-    const up = Math.pow(2, (combo * 0.5 + (gold ? 3 : 0) + height * 1.5 + (soft ? (Math.random() * 2 - 1) : 0)) / 12) * this.rnd(0.995, 1.005);
-    const f1 = 1046.5 * up, f2 = 1568 * up; // C6, G6
-    const bell = (t0, f, peak, dur) => { // clean fast attack, inharmonic bell partials, long shimmer ring-out
-      this.tone(o, t0, f, f, dur, 'sine', peak, 0.0015);
-      this.tone(o, t0, f * 2.01, f * 2.01, dur * 0.55, 'sine', peak * 0.32, 0.0015);
-      this.tone(o, t0, f * 3.02, f * 3.02, dur * 0.3, 'sine', peak * 0.14, 0.001);
-      this.tone(o, t0, f * 4.17, f * 4.17, dur * 0.18, 'sine', peak * 0.07, 0.001);
-      this.tone(o, t0, f * 1.003, f * 1.003, dur, 'sine', peak * 0.35, 0.0015); // slight detune = shimmer
-    };
-    bell(t, f1, gold ? 0.3 : 0.24, 0.55);
-    bell(t + 0.075, f2, gold ? 0.32 : 0.26, gold ? 1.2 : 0.85);
-    if (gold) bell(t + 0.15, f2 * 1.335, 0.2, 1.2); // extra sparkle for gold (C7)
-    this.noise(o, t, 0.012, 'highpass', 6000, 6000, 0.7, 0.12); // tiny metallic tick on the attack
-    // light rubber settle underneath, kept low so the bling stays in front
+    const up = Math.pow(2, (combo * 0.5 + (gold ? 2 : 0) + height * 1.0 + (soft ? (Math.random() * 2 - 1) : 0)) / 12) * this.rnd(0.995, 1.005);
+    const f = 1318.5 * up, D = gold ? 0.11 : 0.085; // E6, very short
+    this.tone(o, t, f, f * 0.995, D, 'sine', gold ? 0.3 : 0.27, 0.0008);           // the "din"
+    this.tone(o, t, f * 2.76, f * 2.74, D * 0.45, 'sine', gold ? 0.1 : 0.07, 0.0005); // metallic partial, gone almost at once
+    if (gold) { this.tone(o, t, f * 2.0, f * 2.0, D * 0.8, 'sine', 0.12, 0.0006); this.tone(o, t, f * 3.0, f * 3.0, D * 0.55, 'sine', 0.06, 0.0005); } // brighter double overtone
+    this.noise(o, t, 0.008, 'highpass', 6500, 6500, 0.7, 0.14); // dry tick on the attack
+    // light rubber thump underneath, short and low so the din stays dry
     const k = (1 - size * 0.1) * this.rnd(0.94, 1.06);
-    this.tone(o, t, 140 * k, 85 * k, 0.14, 'sine', 0.22);
-    this.noise(o, t, 0.05, 'bandpass', 900 * k, 600 * k, 2, 0.1);
+    this.tone(o, t, 140 * k, 85 * k, 0.09, 'sine', 0.2);
+    this.noise(o, t, 0.04, 'bandpass', 900 * k, 600 * k, 2, 0.08);
   }
   // tire dropped in the cart: deep thud + rattling metal frame
   thud(n = 1, pan = 0, gain = 1) {

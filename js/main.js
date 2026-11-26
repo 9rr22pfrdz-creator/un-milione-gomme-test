@@ -520,7 +520,7 @@ function tryStore() {
   else return false;
   if (rackRoom(type) <= 0) { toast(`Lo scaffale ${['14"', '16"', '18"', 'Scooter'][bayOf(type)]} è pieno`); sfx.nope(); return true; }
   if (fromHand) { S.hands.pop(); refreshHands(); } else { S.cart.pop(); refreshCart(); }
-  throwCD = C.PLAYER.throwInterval; sfx.whoosh(0); storeTire(type, src, {}); return true;
+  throwCD = C.throwGap(S.lv.grip); sfx.whoosh(0); storeTire(type, src, {}); return true;
 }
 // ---- contracts ----
 CT.fill(S.contracts);
@@ -670,7 +670,7 @@ function tryShred(s = nearShredder()) {
   else return false;
   if (!shredders.accepts(s)) { toast('Il trituratore è pieno: un attimo che macina'); sfx.nope(); return true; }
   if (!holding()) { S.hands.pop(); refreshHands(); } else { S.cart.pop(); refreshCart(); }
-  throwCD = C.PLAYER.throwInterval; sfx.whoosh(0); shredFeed(s, type, src, {}); updateHUD(); return true;
+  throwCD = C.throwGap(S.lv.grip); sfx.whoosh(0); shredFeed(s, type, src, {}); updateHUD(); return true;
 }
 // ---- macchina dei fascioni ----
 function fascUnlocked() { return S.lv.fascioni >= 1; }
@@ -696,7 +696,7 @@ function tryFeedCutter() {
   else return false;
   if (!cutterRoom()) { toast(S.fascioni.ready >= F5.FASC.READY_MAX ? 'Il banco è pieno di fascioni: infilali!' : 'La macchina sta tagliando, un attimo'); sfx.nope(); return true; }
   if (!holding()) { S.hands.pop(); refreshHands(); } else { S.cart.pop(); refreshCart(); }
-  throwCD = C.PLAYER.throwInterval; sfx.whoosh(0); cutterFeed(type, src, {}); updateHUD(); return true;
+  throwCD = C.throwGap(S.lv.grip); sfx.whoosh(0); cutterFeed(type, src, {}); updateHUD(); return true;
 }
 // one click at the table = one fascione nested into the stack: "tutun! tutun!"
 function tryNest() {
@@ -1097,6 +1097,7 @@ function fmtVal(u, v) {
   if (u.id === 'drones') return v ? `${v} droni` : 'nessuno';
   if (u.id === 'droneLift') return `${v} gomm${v > 1 ? 'e' : 'a'} per volo`;
   if (u.id === 'spider') return v ? (v === 1 ? '1 ragno' : `${v} ragni`) : 'non installato';
+  if (u.id === 'grip') return v > 0 ? `${String(v).replace('.', ',')} s tra due prese` : 'presa e lancio immediati (a ogni clic)';
   if (u.id === 'trust') return v > 1 ? `+${Math.round((v - 1) * 100)}% a gomma` : 'paga normale';
   if (u.id === 'bays') return v > 1 ? `${v} piazzole` : '1 piazzola';
   return String(v).replace('.', ',') + ' ' + u.unit;
@@ -1192,7 +1193,7 @@ function tryGrab(rec) {
   const from = rec.pos.clone(), q0 = rec.quat.clone();
   const target = toCart ? (o) => { cart.updateMatrixWorld(true); return cartRig().localToWorld(cartSlotLocal(slotI, type, o)); } : (o) => { camera.updateMatrixWorld(); return handGroup.localToWorld(o.copy(handSlots[Math.min(slotI, 1)])); };
   const tq = new THREE.Quaternion();
-  startFlight({ kind: 'grab', toCart, type, from, q0, to: target, q1: () => (toCart ? tq.setFromEuler(new THREE.Euler(0, P.yaw, 0)) : tq.copy(camera.quaternion).multiply(_q3.setFromEuler(new THREE.Euler(0.25, 0, slotI ? -1.25 : 1.25)))), dur: Math.max(0.22, st.grab * 0.8), arc: 0.35, ease: 'out',
+  startFlight({ kind: 'grab', toCart, type, from, q0, to: target, q1: () => (toCart ? tq.setFromEuler(new THREE.Euler(0, P.yaw, 0)) : tq.copy(camera.quaternion).multiply(_q3.setFromEuler(new THREE.Euler(0.25, 0, slotI ? -1.25 : 1.25)))), dur: st.grab <= 0 ? 0.14 : Math.max(0.22, st.grab * 0.8), arc: 0.35, ease: 'out',
     done: () => {
       if (toCart) { reservedCart--; S.cart.push(type); refreshCart(); sfx.thud(S.cart.length); } else { reservedHands--; S.hands.push(type); refreshHands(); }
       if (type === C.GOLD_ID) { banner('Gomma d\'oro!', `Vale ${money(C.TIRES[C.GOLD_ID].value)} nel furgone`); sfx.milestone(); }
@@ -1210,7 +1211,7 @@ function tryThrow() {
   else return false;
   if (!vanHasRoom(type)) return false;
   if (fromHand) { S.hands.pop(); refreshHands(); } else { S.cart.pop(); refreshCart(); }
-  throwCD = C.PLAYER.throwInterval;
+  throwCD = C.throwGap(S.lv.grip);
   sfx.whoosh(0);
   launchToVan(type, srcPos, srcQ, {});
   return true;
@@ -1740,7 +1741,7 @@ if (TEST) {
     // v8
     pulleys, shredders, fasc, fq, F5, FBAY, CUT_ZONE, TABLE_ZONE, dropDest, shredFeed, cutterFeed, cutterRoom, tryNest, tryFeedCutter, tryShred, nearShredder, inCutZone, inTableZone, syncPulleys, footprintOf,
     // v1.0
-    drones, spiders, ending, DPAD, PAD_BOX, SPIDER, syncDrones, syncSpiders, syncArms, payMul, tireVal, bayAccept, get bayIn() { return V.bayIn; }, get dustN() { return dusts.length; }, renderShop, beginFinale, haltAll, setRemaining, dronePick, droneDest, endStats, get halted() { return halted; },
+    drones, spiders, ending, DPAD, PAD_BOX, SPIDER, syncDrones, syncSpiders, syncArms, payMul, tireVal, bayAccept, get bayIn() { return V.bayIn; }, get dustN() { return dusts.length; }, get grabBusy() { return grabBusy; }, sfx, get throwCD() { return throwCD; }, tryThrow, flightsOf: k => flights.filter(f => f.kind === k).length, renderShop, beginFinale, haltAll, setRemaining, dronePick, droneDest, endStats, get halted() { return halted; },
     stepMs(n = 60) { const t0 = performance.now(); for (let i = 0; i < n; i++) step(1 / 60); return (performance.now() - t0) / n; },
     get ctOpen() { return ctOpen; }, get FL() { return FL; }, setVehicleNow(t) { setVehicle(t); evictPieces(); updateHUD(); },
     clearBanners() { bannerQ.length = 0; bannerT = 0; $('banner').classList.remove('show'); toastT = 0; $('toast').classList.remove('show'); },
